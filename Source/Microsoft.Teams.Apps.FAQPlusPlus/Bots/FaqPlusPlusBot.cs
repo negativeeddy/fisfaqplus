@@ -218,6 +218,10 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                         this.logger.LogWarning($"Received unexpected conversationType {message.Conversation.ConversationType}");
                         break;
                 }
+                //await this.OnMessageActivityInPersonalChatAsync(
+                //            message,
+                //            turnContext,
+                //            cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

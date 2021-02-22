@@ -205,8 +205,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
                     PreviousUserQuery = previousUserQuery,
                 };
             }
-
-            return await this.qnaMakerRuntimeClient.Runtime.GenerateAnswerAsync(knowledgeBaseId, queryDTO).ConfigureAwait(false);
+            return await this.qnaMakerClient.Knowledgebase.GenerateAnswerAsync(knowledgeBaseId, queryDTO).ConfigureAwait(false);
+            //return await this.qnaMakerRuntimeClient.Runtime.GenerateAnswerAsync(knowledgeBaseId, queryDTO).ConfigureAwait(false);
         }
 
         /// <summary>
