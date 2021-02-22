@@ -49,7 +49,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Configuration
         // Strip the route suffix from the endpoint
         private static string StripRouteFromQnAMakerEndpoint(string endpoint)
         {
-            const string apiRoute = "/qnamaker/v4.0";
+            const string apiRoute = "/qnamaker/v5.0-preview.1";
 
             if (endpoint.EndsWith(apiRoute, System.StringComparison.OrdinalIgnoreCase))
             {

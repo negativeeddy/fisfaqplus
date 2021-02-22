@@ -8,6 +8,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Configuration
     using System.Web.Optimization;
     using System.Web.Routing;
     using global::Owin;
+    using Microsoft.IdentityModel.Logging;
 
     /// <summary>
     /// Startup.
@@ -24,6 +25,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Configuration
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
+
+            IdentityModelEventSource.ShowPII = true;
 
             var container = AutofacConfig.RegisterDependencies();
             this.ConfigureAuth(app, container);
