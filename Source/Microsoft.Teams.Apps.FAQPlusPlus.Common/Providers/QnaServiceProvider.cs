@@ -28,7 +28,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
 
         private readonly IConfigurationDataProvider configurationProvider;
         private readonly IQnAMakerClient qnaMakerClient;
-        private readonly IQnAMakerRuntimeClient qnaMakerRuntimeClient;
+        private readonly QnAMakerRuntimeClient qnaMakerRuntimeClient;
 
         /// <summary>
         /// Represents a set of key/value application configuration properties.
@@ -42,7 +42,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <param name="optionsAccessor">A set of key/value application configuration properties.</param>
         /// <param name="qnaMakerClient">Qna service client.</param>
         /// <param name="qnaMakerRuntimeClient">Qna service runtime client.</param>
-        public QnaServiceProvider(IConfigurationDataProvider configurationProvider, IOptionsMonitor<QnAMakerSettings> optionsAccessor, IQnAMakerClient qnaMakerClient, IQnAMakerRuntimeClient qnaMakerRuntimeClient)
+        public QnaServiceProvider(IConfigurationDataProvider configurationProvider, IOptionsMonitor<QnAMakerSettings> optionsAccessor, IQnAMakerClient qnaMakerClient, QnAMakerRuntimeClient qnaMakerRuntimeClient)
         {
             this.configurationProvider = configurationProvider;
             this.qnaMakerClient = qnaMakerClient;
@@ -201,7 +201,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
             {
                 queryDTO.Context = new QueryDTOContext
                 {
-                    PreviousQnaId = previousQnAId,
+                    PreviousQnaId = Convert.ToInt32(previousQnAId),
                     PreviousUserQuery = previousUserQuery,
                 };
             }
