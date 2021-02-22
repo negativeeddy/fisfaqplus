@@ -61,6 +61,17 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             app.UseMvc();
         }
 
+        private static string StripRouteFromQnAMakerEndpoint(string endpoint)
+        {
+            const string apiRoute = "/qnamaker/v5.0-preview.1";
+
+            if (endpoint.EndsWith(apiRoute, System.StringComparison.OrdinalIgnoreCase))
+            {
+                endpoint = endpoint.Substring(0, endpoint.Length - apiRoute.Length);
+            }
+            return endpoint;
+        }
+
         /// <summary>
         /// This method gets called by the runtime. Use this method to add services to the container.
         /// </summary>
@@ -98,7 +109,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
             services.AddSingleton(new MicrosoftAppCredentials(this.Configuration["MicrosoftAppId"], this.Configuration["MicrosoftAppPassword"]));
 
-            IQnAMakerClient qnaMakerClient = new QnAMakerClient(new ApiKeyServiceClientCredentials(this.Configuration["QnAMakerSubscriptionKey"])) { Endpoint = this.Configuration["QnAMakerApiEndpointUrl"] };
+            IQnAMakerClient qnaMakerClient = new QnAMakerClient(
+                new ApiKeyServiceClientCredentials(this.Configuration["QnAMakerSubscriptionKey"]))
+            { Endpoint = StripRouteFromQnAMakerEndpoint(this.Configuration["QnAMakerApiEndpointUrl"])};
             string endpointKey = this.Configuration["PrimaryEndpointKey"]; //Task.Run(() => qnaMakerClient.EndpointKeys.GetKeysAsync()).Result.PrimaryEndpointKey;
 
             services.AddSingleton<IQnaServiceProvider>((provider) => new QnaServiceProvider(
