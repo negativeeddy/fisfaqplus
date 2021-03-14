@@ -7,11 +7,16 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.IO;
     using System.Linq;
     using System.Net;
+    using System.Net.Http;
+    using System.Net.Http.Headers;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.ApplicationInsights.DataContracts;
+    using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Teams;
@@ -90,10 +95,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IKnowledgeBaseSearchService knowledgeBaseSearchService;
         private readonly ILogger<FaqPlusPlusBot> logger;
         private readonly IQnaServiceProvider qnaServiceProvider;
+        private readonly IHttpClientFactory clientFactory;
+
+        private static string answersContent;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
         /// </summary>
+        /// <param name="clientFactory">Client Factory</param>
         /// <param name="configurationProvider">Configuration Provider.</param>
         /// <param name="microsoftAppCredentials">Microsoft app credentials to use.</param>
         /// <param name="ticketsProvider">Tickets Provider.</param>
@@ -106,6 +115,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <param name="optionsAccessor">A set of key/value application configuration properties for FaqPlusPlus bot.</param>
         /// <param name="logger">Instance to send logs to the Application Insights service.</param>
         public FaqPlusPlusBot(
+            IHttpClientFactory clientFactory,
             Common.Providers.IConfigurationDataProvider configurationProvider,
             MicrosoftAppCredentials microsoftAppCredentials,
             ITicketsProvider ticketsProvider,
@@ -118,6 +128,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             IOptionsMonitor<BotSettings> optionsAccessor,
             ILogger<FaqPlusPlusBot> logger)
         {
+            this.clientFactory = clientFactory;
             this.configurationProvider = configurationProvider;
             this.microsoftAppCredentials = microsoftAppCredentials;
             this.ticketsProvider = ticketsProvider;
@@ -772,6 +783,54 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 return;
             }
 
+            // Add the code to check if the file attachment was received
+            bool messageWithFileDownloadInfo = turnContext.Activity.Attachments?[0].ContentType == FileDownloadInfo.ContentType;
+
+            // If we have file attachment, process the CSV file to find out the answers from qnA maker
+            if (messageWithFileDownloadInfo)
+            {
+                var file = turnContext.Activity.Attachments[0];
+                var fileDownload = JObject.FromObject(file.Content).ToObject<FileDownloadInfo>();
+                string filePath = Path.Combine("Files", file.Name);
+                var client = clientFactory.CreateClient();
+                var response = await client.GetAsync(fileDownload.DownloadUrl);
+                // Read the file content
+                var fileContent = await response.Content.ReadAsStringAsync();
+
+                // Create QnA object to store the answers from QnA
+                var qnA = new QnA();
+                var answers = new List<AnswerItem>();
+                CSVHelper csv = new CSVHelper(fileContent, "\",\"", true);
+                foreach (string[] line in csv)
+                {
+                    var answer = new AnswerItem
+                    {
+                        Question = line[0],
+                        Answer = await this.GenerateAnswer(line[0]),
+                    };
+                    answers.Add(answer);
+                }
+
+                qnA.Answers = answers;
+
+                var csvOut = new StringBuilder();
+                var header = string.Format("{0},{1}", "Question", "Answer");
+                csvOut.AppendLine(header);
+                foreach (var answer in qnA.Answers)
+                {
+                    var q = answer.Question;
+                    var a = answer.Answer;
+                    var qapair = string.Format("{0},{1}", q, a);
+                    csvOut.AppendLine(qapair);
+                }
+
+                string filename = Path.GetFileNameWithoutExtension(file.Name) + "_A" + ".csv";
+                long fileSize = csvOut.Length;
+                answersContent = csvOut.ToString();
+                this.SendFileCardAsync(turnContext, filename, fileSize, cancellationToken).RunSynchronously();
+            }
+
+            // Process code as-is for non attachment
             string text = message.Text?.ToLower()?.Trim() ?? string.Empty;
 
             switch (text)
@@ -1482,6 +1541,124 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 // Throw the error at calling place, if there is any generic exception which is not caught.
                 throw;
             }
+        }
+
+        private async Task<string> GenerateAnswer(string question)
+        {
+            var queryResult = await this.qnaServiceProvider.GenerateAnswerAsync(question: question, isTestKnowledgeBase: false).ConfigureAwait(false);
+            var answer = string.Empty;
+
+            if (queryResult.Answers.First().Id != -1)
+            {
+                var answerData = queryResult.Answers.First();
+                answer = answerData.Answer;
+            }
+            return answer;
+        }
+
+        private async Task SendFileCardAsync(ITurnContext turnContext, string filename, long filesize, CancellationToken cancellationToken)
+        {
+            var consentContext = new Dictionary<string, string>
+            {
+                { "filename", filename },
+            };
+
+            var fileCard = new FileConsentCard
+            {
+                Description = "Attached is the CSV file with answers from QnA Maker",
+                SizeInBytes = filesize,
+                AcceptContext = consentContext,
+                DeclineContext = consentContext,
+            };
+
+            var asAttachment = new Attachment
+            {
+                Content = fileCard,
+                ContentType = FileConsentCard.ContentType,
+                Name = filename,
+            };
+
+            var replyActivity = turnContext.Activity.CreateReply();
+            replyActivity.Attachments = new List<Attachment>() { asAttachment };
+            await turnContext.SendActivityAsync(replyActivity, cancellationToken);
+        }
+
+        /// <summary>
+        /// File Consent.
+        /// </summary>
+        /// <param name="turnContext">Turn Context.</param>
+        /// <param name="fileConsentCardResponse">File Consent Card.</param>
+        /// <param name="cancellationToken">Cancellation Token.</param>
+        /// <returns>Async operation</returns>
+        protected override async Task OnTeamsFileConsentAcceptAsync(ITurnContext<IInvokeActivity> turnContext, FileConsentCardResponse fileConsentCardResponse, CancellationToken cancellationToken)
+        {
+            try
+            {
+                JToken context = JObject.FromObject(fileConsentCardResponse.Context);
+
+                var client = this.clientFactory.CreateClient();
+                // TODO : Change to get the content of the output file from Context
+                //var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(turnContext.Activity.Value.ToString())));
+                var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(answersContent)));
+                await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, fileContent, cancellationToken);
+                await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                await this.FileUploadFailedAsync(turnContext, e.ToString(), cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// File consent decline.
+        /// </summary>
+        /// <param name="turnContext">Turn Context.</param>
+        /// <param name="fileConsentCardResponse">File Consent Card.</param>
+        /// <param name="cancellationToken">Cancellation Token.</param>
+        /// <returns>Async operation</returns>
+        protected override async Task OnTeamsFileConsentDeclineAsync(ITurnContext<IInvokeActivity> turnContext, FileConsentCardResponse fileConsentCardResponse, CancellationToken cancellationToken)
+        {
+            JToken context = JObject.FromObject(fileConsentCardResponse.Context);
+
+            var reply = MessageFactory.Text($"Declined. We won't upload file <b>{context["filename"]}</b>.");
+            reply.TextFormat = "xml";
+            await turnContext.SendActivityAsync(reply, cancellationToken);
+        }
+
+        /// <summary>
+        /// File upload completed.
+        /// </summary>
+        /// <param name="turnContext">Turn Context.</param>
+        /// <param name="fileConsentCardResponse">File Consent Card.</param>
+        /// <param name="cancellationToken">Cancellation Token.</param>
+        private async Task FileUploadCompletedAsync(ITurnContext turnContext, FileConsentCardResponse fileConsentCardResponse, CancellationToken cancellationToken)
+        {
+            var downloadCard = new FileInfoCard
+            {
+                UniqueId = fileConsentCardResponse.UploadInfo.UniqueId,
+                FileType = fileConsentCardResponse.UploadInfo.FileType,
+            };
+
+            var asAttachment = new Attachment
+            {
+                Content = downloadCard,
+                ContentType = FileInfoCard.ContentType,
+                Name = fileConsentCardResponse.UploadInfo.Name,
+                ContentUrl = fileConsentCardResponse.UploadInfo.ContentUrl,
+            };
+
+            var reply = MessageFactory.Text($"<b>File uploaded.</b> Your file <b>{fileConsentCardResponse.UploadInfo.Name}</b> is ready to download");
+            reply.TextFormat = "xml";
+            reply.Attachments = new List<Attachment> { asAttachment };
+
+            await turnContext.SendActivityAsync(reply, cancellationToken);
+        }
+
+        private async Task FileUploadFailedAsync(ITurnContext turnContext, string error, CancellationToken cancellationToken)
+        {
+            var reply = MessageFactory.Text($"<b>File upload failed.</b> Error: <pre>{error}</pre>");
+            reply.TextFormat = "xml";
+            await turnContext.SendActivityAsync(reply, cancellationToken);
         }
     }
 }

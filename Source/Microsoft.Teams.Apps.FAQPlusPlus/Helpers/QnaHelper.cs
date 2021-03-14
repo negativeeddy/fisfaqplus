@@ -164,4 +164,25 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
             return questionAnswerResponse.Questions.First().ToUpperInvariant() == question?.ToUpperInvariant().Trim();
         }
     }
+
+    public class AnswerItem
+    {
+        [JsonProperty("answer")]
+        public string Answer { get; set; }
+
+        [JsonProperty("question")]
+        public string Question { get; set; }
+    }
+
+    /// <summary>
+    ///     A successful call returns the result of the question.
+    /// </summary>
+    public class QnA
+    {
+        /// <summary>
+        ///     List of answers for the user query sorted in decreasing order of ranking score.
+        /// </summary>
+        [JsonProperty("answers")]
+        public IList<AnswerItem> Answers { get; set; }
+    }
 }
