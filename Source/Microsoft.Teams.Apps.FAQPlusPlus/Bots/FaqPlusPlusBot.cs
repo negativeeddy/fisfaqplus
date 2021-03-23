@@ -20,7 +20,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Teams;
-       using Microsoft.Bot.Connector;
+    using Microsoft.Bot.Connector;
     using Microsoft.Bot.Connector.Authentication;
     using Microsoft.Bot.Schema;
     using Microsoft.Bot.Schema.Teams;
@@ -77,6 +77,16 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// ChangeStatus - text that triggers change status action by SME.
         /// </summary>
         private const string ChangeStatus = "change status";
+
+        /// <summary>
+        /// File extension for CSV files
+        /// </summary>
+        private const string CSV_EXTENSION = ".csv";
+
+        /// <summary>
+        /// File extension for Excel files
+        /// </summary>
+        private const string XLSX_EXTENSION = ".xlsx";
 
         /// <summary>
         /// Represents a set of key/value application configuration properties for FaqPlusPlus bot.
@@ -793,12 +803,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
 
             // Check if a file attachment of questions was received
-            (bool success, string filename, IList<AnswerItem> questions) = await TryGetQuestionFromAttachment(turnContext.Activity);
+            (string filename, IList<AnswerItem> questions) = await TryGetQuestionsFromAttachment(turnContext.Activity);
 
             // If we have a questions from the attachment, process the them to find out the answers from qnA maker
-            if (success)
+            if (questions != null)
             {
-                await ProcessInPersonalChatAttachment(turnContext, filename, questions, cancellationToken);
+                await ProcessInPersonalChatQuestionsAttachment(turnContext, filename, questions, cancellationToken);
 
             }
             else
@@ -808,16 +818,31 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
         }
 
-        private async Task ProcessInPersonalChatAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, CancellationToken cancellationToken)
+        private async Task ProcessInPersonalChatQuestionsAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, CancellationToken cancellationToken)
         {
+            string extension = Path.GetExtension(filename);
+
+            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file. One moment while I find check QnA Maker for the answers");
+
             // Create QnA object to store the answers from QnA
             foreach (var question in questions)
             {
                 question.Answer = await this.GenerateAnswer(question.Question);
             }
 
-            string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + ".csv";
-            answersContent = CsvFromQuestions(questions);
+            string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
+            switch (extension)
+            {
+                case CSV_EXTENSION:
+                    answersContent = CSVHelper.CsvFromQuestions(questions);
+                    break;
+                case XLSX_EXTENSION:
+                    MemoryStream stream = new MemoryStream();
+                    XlsxHelper.XlsxFromQuestions(questions, stream);
+                    stream.Position = 0;
+                    answersContent = stream.ToArray();
+                    break;
+            }
 
             await this.SendFileCardAsync(turnContext, newFilename, answersContent, cancellationToken);
         }
@@ -851,29 +876,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
         }
 
-        private static byte[] CsvFromQuestions(IList<AnswerItem> questions)
-        {
-            var csvOut = new StringBuilder();
-            var header = "Question,Answer,Metadata";
-            csvOut.AppendLine(header);
-            foreach (var answer in questions)
-            {
-                var q = answer.Question;
-                var a = answer.Answer;
-                var m = answer.Metadata;
-                var qapair = string.Format("{0},{1},{2}", q, a, m);
-                csvOut.AppendLine(qapair);
-            }
-
-            var csvString = csvOut.ToString();
-            var bytes = UTF8Encoding.UTF8.GetBytes(csvString);
-            return bytes;
-        }
-
-        private async Task<(bool success, string name, IList<AnswerItem> answers)> TryGetQuestionFromAttachment(IMessageActivity activity)
+        private async Task<(string name, IList<AnswerItem> answers)> TryGetQuestionsFromAttachment(IMessageActivity activity)
         {
             string contentUrl = null;
             string filename = null;
+            IList<AnswerItem> answerItems = null;
 
             if (activity.ChannelId == Channels.Msteams)
             {
@@ -893,11 +900,16 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             else
             {
                 // check for regular attachments (e.g. from the emulator)
-                var isCsv = activity.Attachments?[0].ContentType == "text/csv";
-                if (isCsv)
+                switch (activity.Attachments?[0].ContentType)
                 {
-                    filename = activity.Attachments[0].Name;
-                    contentUrl = activity.Attachments[0].ContentUrl;
+                    case "text/csv":
+                        filename = activity.Attachments[0].Name;
+                        contentUrl = activity.Attachments[0].ContentUrl;
+                        break;
+                    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                        filename = activity.Attachments[0].Name;
+                        contentUrl = activity.Attachments[0].ContentUrl;
+                        break;
                 }
             }
 
@@ -906,26 +918,23 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             {
                 var client = clientFactory.CreateClient();
                 var response = await client.GetAsync(contentUrl);
-                string fileContent = await response.Content.ReadAsStringAsync();
-                return (fileContent != null, filename, AnswerListFromCsv(fileContent));
-            }
-            else
-            {
-                return (false, null, null);
-            }
-        }
 
-        private IList<AnswerItem> AnswerListFromCsv(string fileContent)
-        {
-            CSVHelper csv = new CSVHelper(fileContent, ",", true);
-            var answers = from string[] line in csv
-                          select new AnswerItem
-                          {
-                              Question = line[0],
-                              Answer = null,
-                              Metadata = line[2],
-                          };
-            return answers.ToList();
+                switch (Path.GetExtension(filename))
+                {
+                    case CSV_EXTENSION:
+                        string fileContent = await response.Content.ReadAsStringAsync();
+                        answerItems = CSVHelper.AnswerListFromCsv(fileContent);
+                        break;
+                    case XLSX_EXTENSION:
+                        using (Stream stream = await response.Content.ReadAsStreamAsync())
+                        {
+                            answerItems = XlsxHelper.QuestionsFromXlsx(stream);
+                        }
+                        break;
+                }
+            }
+
+            return (filename, answerItems);
         }
 
         /// <summary>
@@ -1631,7 +1640,10 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
         private async Task SendFileCardAsync(ITurnContext turnContext, string filename, byte[] bytes, CancellationToken cancellationToken)
         {
-            var replyActivity = turnContext.Activity.CreateReply("Attached is the CSV file with answers from QnA Maker");
+            string extension = Path.GetExtension(filename);
+            string message = $"Attached is the {extension.Substring(0).ToUpper()} file with answers from QnA Maker";
+
+            var replyActivity = turnContext.Activity.CreateReply(message);
 
             switch (turnContext.Activity.ChannelId)
             {
@@ -1643,7 +1655,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
                     var fileCard = new FileConsentCard
                     {
-                        Description = "Attached is the CSV file with answers from QnA Maker",
+                        Description = message,
                         SizeInBytes = bytes.Length,
                         AcceptContext = consentContext,
                         DeclineContext = consentContext,
@@ -1662,11 +1674,24 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 default:
                     var base64Data = Convert.ToBase64String(bytes);
 
+                    string contentType;
+                    switch (extension)
+                    {
+                        case CSV_EXTENSION:
+                            contentType = "text/csv";
+                            break;
+                        case XLSX_EXTENSION:
+                            contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                            break;
+                        default:
+                            throw new InvalidOperationException("Unknown file type");
+                    }
+
                     var attachment = new Attachment
                     {
                         Name = filename,
-                        ContentType = "text/csv",
-                        ContentUrl = $"data:image/png;base64,{base64Data}",
+                        ContentType = contentType,
+                        ContentUrl = $"data:{contentType};base64,{base64Data}",
                     };
                     replyActivity.Attachments = new List<Attachment>() { attachment };
                     break;
