@@ -20,6 +20,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Teams;
+       using Microsoft.Bot.Connector;
     using Microsoft.Bot.Connector.Authentication;
     using Microsoft.Bot.Schema;
     using Microsoft.Bot.Schema.Teams;
@@ -97,7 +98,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IHttpClientFactory clientFactory;
 
-        private static string answersContent;
+        private static byte[] answersContent;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
@@ -209,7 +210,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 this.logger.LogInformation($"from: {message.From?.Id}, conversation: {message.Conversation.Id}, replyToId: {message.ReplyToId}");
                 await this.SendTypingIndicatorAsync(turnContext).ConfigureAwait(false);
 
-                switch (message.Conversation.ConversationType.ToLower())
+                switch (message.Conversation.ConversationType?.ToLower())
                 {
                     case ConversationTypePersonal:
                         await this.OnMessageActivityInPersonalChatAsync(
@@ -224,7 +225,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                             turnContext,
                             cancellationToken).ConfigureAwait(false);
                         break;
-
+#if DEBUG
+                    case null:
+                        // in emulator treat all messages as personal chat
+                        await this.OnMessageActivityInPersonalChatAsync(
+                            message,
+                            turnContext,
+                            cancellationToken).ConfigureAwait(false);
+                        break;
+#endif
                     default:
                         this.logger.LogWarning($"Received unexpected conversationType {message.Conversation.ConversationType}");
                         break;
@@ -267,7 +276,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     return;
                 }
 
-                switch (activity.Conversation.ConversationType.ToLower())
+                switch (activity.Conversation.ConversationType?.ToLower())
                 {
                     case ConversationTypePersonal:
                         await this.OnMembersAddedToPersonalChatAsync(activity.MembersAdded, turnContext).ConfigureAwait(false);
@@ -783,54 +792,38 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 return;
             }
 
-            // Add the code to check if the file attachment was received
-            bool messageWithFileDownloadInfo = turnContext.Activity.Attachments?[0].ContentType == FileDownloadInfo.ContentType;
+            // Check if a file attachment of questions was received
+            (bool success, string filename, IList<AnswerItem> questions) = await TryGetQuestionFromAttachment(turnContext.Activity);
 
-            // If we have file attachment, process the CSV file to find out the answers from qnA maker
-            if (messageWithFileDownloadInfo)
+            // If we have a questions from the attachment, process the them to find out the answers from qnA maker
+            if (success)
             {
-                var file = turnContext.Activity.Attachments[0];
-                var fileDownload = JObject.FromObject(file.Content).ToObject<FileDownloadInfo>();
-                string filePath = Path.Combine("Files", file.Name);
-                var client = clientFactory.CreateClient();
-                var response = await client.GetAsync(fileDownload.DownloadUrl);
-                // Read the file content
-                var fileContent = await response.Content.ReadAsStringAsync();
+                await ProcessInPersonalChatAttachment(turnContext, filename, questions, cancellationToken);
 
-                // Create QnA object to store the answers from QnA
-                var qnA = new QnA();
-                var answers = new List<AnswerItem>();
-                CSVHelper csv = new CSVHelper(fileContent, "\",\"", true);
-                foreach (string[] line in csv)
-                {
-                    var answer = new AnswerItem
-                    {
-                        Question = line[0],
-                        Answer = await this.GenerateAnswer(line[0]),
-                    };
-                    answers.Add(answer);
-                }
+            }
+            else
+            {
+                // Process code as-is for non attachment
+                await ProcessInPersonalChatMessage(message, turnContext);
+            }
+        }
 
-                qnA.Answers = answers;
-
-                var csvOut = new StringBuilder();
-                var header = string.Format("{0},{1}", "Question", "Answer");
-                csvOut.AppendLine(header);
-                foreach (var answer in qnA.Answers)
-                {
-                    var q = answer.Question;
-                    var a = answer.Answer;
-                    var qapair = string.Format("{0},{1}", q, a);
-                    csvOut.AppendLine(qapair);
-                }
-
-                string filename = Path.GetFileNameWithoutExtension(file.Name) + "_A" + ".csv";
-                long fileSize = csvOut.Length;
-                answersContent = csvOut.ToString();
-                this.SendFileCardAsync(turnContext, filename, fileSize, cancellationToken).RunSynchronously();
+        private async Task ProcessInPersonalChatAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, CancellationToken cancellationToken)
+        {
+            // Create QnA object to store the answers from QnA
+            foreach (var question in questions)
+            {
+                question.Answer = await this.GenerateAnswer(question.Question);
             }
 
-            // Process code as-is for non attachment
+            string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + ".csv";
+            answersContent = CsvFromQuestions(questions);
+
+            await this.SendFileCardAsync(turnContext, newFilename, answersContent, cancellationToken);
+        }
+
+        private async Task ProcessInPersonalChatMessage(IMessageActivity message, ITurnContext<IMessageActivity> turnContext)
+        {
             string text = message.Text?.ToLower()?.Trim() ?? string.Empty;
 
             switch (text)
@@ -856,6 +849,83 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     await this.GetQuestionAnswerReplyAsync(turnContext, message).ConfigureAwait(false);
                     break;
             }
+        }
+
+        private static byte[] CsvFromQuestions(IList<AnswerItem> questions)
+        {
+            var csvOut = new StringBuilder();
+            var header = "Question,Answer,Metadata";
+            csvOut.AppendLine(header);
+            foreach (var answer in questions)
+            {
+                var q = answer.Question;
+                var a = answer.Answer;
+                var m = answer.Metadata;
+                var qapair = string.Format("{0},{1},{2}", q, a, m);
+                csvOut.AppendLine(qapair);
+            }
+
+            var csvString = csvOut.ToString();
+            var bytes = UTF8Encoding.UTF8.GetBytes(csvString);
+            return bytes;
+        }
+
+        private async Task<(bool success, string name, IList<AnswerItem> answers)> TryGetQuestionFromAttachment(IMessageActivity activity)
+        {
+            string contentUrl = null;
+            string filename = null;
+
+            if (activity.ChannelId == Channels.Msteams)
+            {
+                // check for Teams attachments
+                bool messageWithFileDownloadInfo = activity.Attachments?[0].ContentType == FileDownloadInfo.ContentType;
+                var file = activity.Attachments?[0];
+                filename = file?.Name;
+
+                // check for attachments from Teams
+                if (messageWithFileDownloadInfo)
+                {
+                    var fileDownload = JObject.FromObject(file.Content).ToObject<FileDownloadInfo>();
+                    string filePath = Path.Combine("Files", filename);
+                    contentUrl = fileDownload.DownloadUrl;
+                }
+            }
+            else
+            {
+                // check for regular attachments (e.g. from the emulator)
+                var isCsv = activity.Attachments?[0].ContentType == "text/csv";
+                if (isCsv)
+                {
+                    filename = activity.Attachments[0].Name;
+                    contentUrl = activity.Attachments[0].ContentUrl;
+                }
+            }
+
+            // Read the file content
+            if (contentUrl != null)
+            {
+                var client = clientFactory.CreateClient();
+                var response = await client.GetAsync(contentUrl);
+                string fileContent = await response.Content.ReadAsStringAsync();
+                return (fileContent != null, filename, AnswerListFromCsv(fileContent));
+            }
+            else
+            {
+                return (false, null, null);
+            }
+        }
+
+        private IList<AnswerItem> AnswerListFromCsv(string fileContent)
+        {
+            CSVHelper csv = new CSVHelper(fileContent, ",", true);
+            var answers = from string[] line in csv
+                          select new AnswerItem
+                          {
+                              Question = line[0],
+                              Answer = null,
+                              Metadata = line[2],
+                          };
+            return answers.ToList();
         }
 
         /// <summary>
@@ -1205,6 +1275,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <returns>Boolean value where true represent tenant is valid while false represent tenant in not valid.</returns>
         private bool IsActivityFromExpectedTenant(ITurnContext turnContext)
         {
+#if DEBUG
+            return true;
+#endif
             return turnContext.Activity.Conversation.TenantId == this.options.TenantId;
         }
 
@@ -1556,30 +1629,50 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             return answer;
         }
 
-        private async Task SendFileCardAsync(ITurnContext turnContext, string filename, long filesize, CancellationToken cancellationToken)
+        private async Task SendFileCardAsync(ITurnContext turnContext, string filename, byte[] bytes, CancellationToken cancellationToken)
         {
-            var consentContext = new Dictionary<string, string>
-            {
-                { "filename", filename },
-            };
+            var replyActivity = turnContext.Activity.CreateReply("Attached is the CSV file with answers from QnA Maker");
 
-            var fileCard = new FileConsentCard
+            switch (turnContext.Activity.ChannelId)
             {
-                Description = "Attached is the CSV file with answers from QnA Maker",
-                SizeInBytes = filesize,
-                AcceptContext = consentContext,
-                DeclineContext = consentContext,
-            };
+                case Channels.Msteams:
+                    var consentContext = new Dictionary<string, string>
+                    {
+                        { "filename", filename },
+                    };
 
-            var asAttachment = new Attachment
-            {
-                Content = fileCard,
-                ContentType = FileConsentCard.ContentType,
-                Name = filename,
-            };
+                    var fileCard = new FileConsentCard
+                    {
+                        Description = "Attached is the CSV file with answers from QnA Maker",
+                        SizeInBytes = bytes.Length,
+                        AcceptContext = consentContext,
+                        DeclineContext = consentContext,
+                    };
 
-            var replyActivity = turnContext.Activity.CreateReply();
-            replyActivity.Attachments = new List<Attachment>() { asAttachment };
+                    var asAttachment = new Attachment
+                    {
+                        Content = fileCard,
+                        ContentType = FileConsentCard.ContentType,
+                        Name = filename,
+                    };
+
+                    replyActivity.Attachments = new List<Attachment>() { asAttachment };
+                    break;
+#if DEBUG
+                default:
+                    var base64Data = Convert.ToBase64String(bytes);
+
+                    var attachment = new Attachment
+                    {
+                        Name = filename,
+                        ContentType = "text/csv",
+                        ContentUrl = $"data:image/png;base64,{base64Data}",
+                    };
+                    replyActivity.Attachments = new List<Attachment>() { attachment };
+                    break;
+#endif
+            }
+
             await turnContext.SendActivityAsync(replyActivity, cancellationToken);
         }
 
@@ -1599,7 +1692,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 var client = this.clientFactory.CreateClient();
                 // TODO : Change to get the content of the output file from Context
                 //var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(turnContext.Activity.Value.ToString())));
-                var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(answersContent)));
+                var fileContent = new StreamContent(new MemoryStream(answersContent));
                 await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, fileContent, cancellationToken);
                 await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
             }
