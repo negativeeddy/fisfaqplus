@@ -824,13 +824,28 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             string extension = Path.GetExtension(filename);
 
-            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file. One moment while I find check QnA Maker for the answers");
+            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file with {questions.Count} questions. One moment while I find check QnA Maker for the answers");
+            await SendTypingIndicatorAsync(turnContext);
+
+            var sw = new System.Diagnostics.Stopwatch();
+            sw.Start();
 
             // Create QnA object to store the answers from QnA
-            foreach (var question in questions)
+            for (int i = 0; i < questions.Count; i++)
             {
+                var question = questions[i];
                 question.Answer = await this.GenerateAnswer(question.Question);
+
+                if (i % 100 == 0 && i > 0)
+                {
+                    await turnContext.SendActivityAsync($"fyi - I've finished {i} so far");
+                    await SendTypingIndicatorAsync(turnContext);
+                }
             }
+
+            sw.Stop();
+
+            this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
 
             string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
             switch (extension)
@@ -846,7 +861,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     break;
             }
 
-            await this.SendFileCardAsync(turnContext, newFilename, answersContent, cancellationToken);
+            await this.SendFileCardAsync(turnContext, filename, newFilename, answersContent, cancellationToken);
         }
 
         private async Task ProcessInPersonalChatMessage(IMessageActivity message, ITurnContext<IMessageActivity> turnContext)
@@ -1640,7 +1655,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             return answer;
         }
 
-        private async Task SendFileCardAsync(ITurnContext turnContext, string filename, byte[] bytes, CancellationToken cancellationToken)
+        private async Task SendFileCardAsync(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
         {
             Activity replyActivity;
             string message;
@@ -1653,13 +1668,13 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
                     var consentContext = new
                     {
-                         filename = "filename",
-                         id = Guid.NewGuid().ToString(),
+                        filename = "filename",
+                        id = Guid.NewGuid().ToString(),
                     };
 
                     var fileCard = new FileConsentCard
                     {
-                        Description = $"QnA Maker answers for file {filename}",
+                        Description = $"QnA Maker answers for \"{answerFilename}\"",
                         SizeInBytes = bytes.Length,
                         AcceptContext = consentContext,
                         DeclineContext = consentContext,
@@ -1669,7 +1684,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         Content = fileCard,
                         ContentType = FileConsentCard.ContentType,
-                        Name = filename,
+                        Name = answerFilename,
                     };
 
                     break;
@@ -1678,7 +1693,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     message = $"I now have the answers for your questions from QnA Maker.";
 
                     string base64Data = Convert.ToBase64String(bytes);
-                    string extension = Path.GetExtension(filename);
+                    string extension = Path.GetExtension(answerFilename);
 
                     string contentType;
                     switch (extension)
@@ -1695,7 +1710,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
                     attachment = new Attachment
                     {
-                        Name = filename,
+                        Name = answerFilename,
                         ContentType = contentType,
                         ContentUrl = $"data:{contentType};base64,{base64Data}",
                     };
