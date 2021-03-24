@@ -1302,7 +1302,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private bool IsActivityFromExpectedTenant(ITurnContext turnContext)
         {
 #if DEBUG
-            return true;
+            // only check Tenant when in Teams
+            if (turnContext.Activity.ChannelId != Channels.Msteams)
+            {
+                return true;
+            }
 #endif
             return turnContext.Activity.Conversation.TenantId == this.options.TenantId;
         }
