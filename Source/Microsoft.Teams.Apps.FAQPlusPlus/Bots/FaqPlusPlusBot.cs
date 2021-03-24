@@ -87,6 +87,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// File extension for Excel files
         /// </summary>
         private const string XLSX_EXTENSION = ".xlsx";
+        private const string XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        private const string CSV_MIME_TYPE = "text/csv";
 
         /// <summary>
         /// Represents a set of key/value application configuration properties for FaqPlusPlus bot.
@@ -902,11 +904,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 // check for regular attachments (e.g. from the emulator)
                 switch (activity.Attachments?[0].ContentType)
                 {
-                    case "text/csv":
+                    case CSV_MIME_TYPE:
                         filename = activity.Attachments[0].Name;
                         contentUrl = activity.Attachments[0].ContentUrl;
                         break;
-                    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                    case XLSX_MIME_TYPE:
                         filename = activity.Attachments[0].Name;
                         contentUrl = activity.Attachments[0].ContentUrl;
                         break;
@@ -1640,64 +1642,69 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
         private async Task SendFileCardAsync(ITurnContext turnContext, string filename, byte[] bytes, CancellationToken cancellationToken)
         {
-            string extension = Path.GetExtension(filename);
-            string message = $"Attached is the {extension.Substring(0).ToUpper()} file with answers from QnA Maker";
-
-            var replyActivity = turnContext.Activity.CreateReply(message);
+            Activity replyActivity;
+            string message;
+            Attachment attachment;
 
             switch (turnContext.Activity.ChannelId)
             {
                 case Channels.Msteams:
-                    var consentContext = new Dictionary<string, string>
+                    message = $"I now have the answers for your questions from QnA Maker. Please grant permission for me to upload them to your OneDrive. Thanks!";
+
+                    var consentContext = new
                     {
-                        { "filename", filename },
+                         filename = "filename",
+                         id = Guid.NewGuid().ToString(),
                     };
 
                     var fileCard = new FileConsentCard
                     {
-                        Description = message,
+                        Description = $"QnA Maker answers for file {filename}",
                         SizeInBytes = bytes.Length,
                         AcceptContext = consentContext,
                         DeclineContext = consentContext,
                     };
 
-                    var asAttachment = new Attachment
+                    attachment = new Attachment
                     {
                         Content = fileCard,
                         ContentType = FileConsentCard.ContentType,
                         Name = filename,
                     };
 
-                    replyActivity.Attachments = new List<Attachment>() { asAttachment };
                     break;
 #if DEBUG
                 default:
-                    var base64Data = Convert.ToBase64String(bytes);
+                    message = $"I now have the answers for your questions from QnA Maker.";
+
+                    string base64Data = Convert.ToBase64String(bytes);
+                    string extension = Path.GetExtension(filename);
 
                     string contentType;
                     switch (extension)
                     {
                         case CSV_EXTENSION:
-                            contentType = "text/csv";
+                            contentType = CSV_MIME_TYPE;
                             break;
                         case XLSX_EXTENSION:
-                            contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                            contentType = XLSX_MIME_TYPE;
                             break;
                         default:
                             throw new InvalidOperationException("Unknown file type");
                     }
 
-                    var attachment = new Attachment
+                    attachment = new Attachment
                     {
                         Name = filename,
                         ContentType = contentType,
                         ContentUrl = $"data:{contentType};base64,{base64Data}",
                     };
-                    replyActivity.Attachments = new List<Attachment>() { attachment };
                     break;
 #endif
             }
 
+            replyActivity = turnContext.Activity.CreateReply(message);
+            replyActivity.Attachments = new List<Attachment>() { attachment };
             await turnContext.SendActivityAsync(replyActivity, cancellationToken);
         }
 
@@ -1716,9 +1723,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
                 var client = this.clientFactory.CreateClient();
                 // TODO : Change to get the content of the output file from Context
-                //var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(turnContext.Activity.Value.ToString())));
-                var fileContent = new StreamContent(new MemoryStream(answersContent));
-                await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, fileContent, cancellationToken);
+                var content = new ByteArrayContent(answersContent);
+                content.Headers.ContentLength = answersContent.Length;
+                content.Headers.ContentRange = new ContentRangeHeaderValue(0, answersContent.Length - 1, answersContent.Length);
+                var response = await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, content, cancellationToken);
+                response.EnsureSuccessStatusCode();
                 await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
             }
             catch (Exception e)
