@@ -5,6 +5,7 @@
 namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
@@ -110,7 +111,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IHttpClientFactory clientFactory;
 
-        private static byte[] answersContent;
+        private static ConcurrentDictionary<string, byte[]> answersContentCache = new ConcurrentDictionary<string, byte[]>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
@@ -848,6 +849,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
 
             string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
+
+            byte[] answersContent = null;
             switch (extension)
             {
                 case CSV_EXTENSION:
@@ -860,6 +863,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     answersContent = stream.ToArray();
                     break;
             }
+
+            answersContentCache.AddOrUpdate(turnContext.Activity.From.Id, answersContent, (_, _) => answersContent);
 
             await this.SendFileCardAsync(turnContext, filename, newFilename, answersContent, cancellationToken);
         }
@@ -1656,7 +1661,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 var answerData = queryResult.Answers.First();
                 answer = answerData.Answer;
             }
-            return answer;
+            return answer
+                ;
         }
 
         private async Task SendFileCardAsync(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
@@ -1673,7 +1679,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     var consentContext = new
                     {
                         filename = "filename",
-                        id = Guid.NewGuid().ToString(),
+                        id = turnContext.Activity.From.Id,
                     };
 
                     var fileCard = new FileConsentCard
@@ -1738,9 +1744,10 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             try
             {
-                JToken context = JObject.FromObject(fileConsentCardResponse.Context);
+                var context = JObject.FromObject(fileConsentCardResponse.Context);
 
                 var client = this.clientFactory.CreateClient();
+                answersContentCache.TryGetValue(context["id"].Value<string>(), out byte[] answersContent);
                 // TODO : Change to get the content of the output file from Context
                 var content = new ByteArrayContent(answersContent);
                 content.Headers.ContentLength = answersContent.Length;
