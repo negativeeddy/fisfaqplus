@@ -58,7 +58,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <param name="updatedQuestion">Updated question text.</param>
         /// <param name="question">Original question text.</param>
         /// <returns>Task of updated action.</returns>
-        Task UpdateQnaAsync(int questionId, string answer, string updatedBy, string updatedQuestion, string question);
+        Task UpdateQnaAsync(int questionId, string answer, string updatedBy, string updatedQuestion, string question, string conversationId = null, string activityReferenceId = null);
 
         /// <summary>
         /// Checks whether knowledgebase need to be published.

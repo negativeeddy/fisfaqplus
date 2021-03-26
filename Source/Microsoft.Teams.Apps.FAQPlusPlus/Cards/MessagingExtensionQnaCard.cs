@@ -516,6 +516,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                     else
                     {
                         customMessage = string.IsNullOrEmpty(metadataCreatedAt) ? Strings.ManuallyAddedQuestionMessage : string.Empty;
+                        dateString = "be sure to send this message before clicking 'migrate'";
                     }
 
                     var card = new AdaptiveCard(new AdaptiveSchemaVersion(1, 0))
@@ -552,6 +553,28 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                                 Title = Strings.GoToThread,
                                 Url = new Uri($"{GoToOriginalThreadUrl}{threadId}/{messageId}"),
                             });
+                    }
+                    else
+                    {
+                        card.Actions.Add(new AdaptiveSubmitAction()
+                        {
+                            Title = "MIGRATE QNA",
+                            Data = new AdaptiveSubmitActionData
+                            {
+                                MsTeams = new CardAction
+                                {
+                                    Type = CardActionType,
+                                },
+                                OriginalQuestion = qnaDocument.Questions[0],
+                                UpdatedQuestion = qnaDocument.Questions[0],
+                                Description = answer,
+                                Title = string.Empty,
+                                Subtitle = string.Empty,
+                                ImageUrl = string.Empty,
+                                RedirectionUrl = string.Empty,
+                                UpdateHistoryData = string.Empty,
+                            },
+                        });
                     }
 
                     ThumbnailCard previewCard = new ThumbnailCard
