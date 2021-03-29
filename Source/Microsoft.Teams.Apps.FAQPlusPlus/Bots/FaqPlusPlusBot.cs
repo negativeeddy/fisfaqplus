@@ -830,7 +830,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             string extension = Path.GetExtension(filename);
 
-            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file with {questions.Count} questions. One moment while I find check QnA Maker for the answers");
+            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file with {questions.Count} questions. One moment while I consult QnA Maker for the answers");
             await SendTypingIndicatorAsync(turnContext);
 
             var sw = new System.Diagnostics.Stopwatch();
@@ -840,7 +840,22 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             for (int i = 0; i < questions.Count; i++)
             {
                 var question = questions[i];
-                question.Answer = await this.GenerateAnswer(question.Question);
+                if (string.IsNullOrEmpty(question.Question))
+                {
+                    question.Answer = "ERROR reading input";
+                    question.Question = "ERROR reading input";
+                }
+                else
+                {
+                    try
+                    {
+                        question.Answer = await this.GenerateAnswer(question.Question);
+                    }
+                    catch(Exception ex)
+                    {
+                        question.Answer = "ERROR generating answer";
+                    }
+                }
 
                 if (i % 100 == 0 && i > 0)
                 {
@@ -1317,6 +1332,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             {
                 return true;
             }
+            return true;
 #endif
             return turnContext.Activity.Conversation.TenantId == this.options.TenantId;
         }
