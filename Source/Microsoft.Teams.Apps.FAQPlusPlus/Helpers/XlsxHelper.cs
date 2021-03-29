@@ -63,11 +63,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 return null;
             }
 
-            string cellText = cell.CellValue.Text;
-            if (cell.DataType.Value == CellValues.SharedString)
+            string cellText = cell.CellValue?.Text;
+            if (cell.DataType.Value == CellValues.SharedString && !string.IsNullOrEmpty(cellText))
             {
                 cellText = stringTable.SharedStringTable.ElementAt(int.Parse(cellText)).InnerText;
             }
+
             return cellText;
         }
 
