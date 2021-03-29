@@ -1688,8 +1688,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private async Task SendFileCardAsync(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
         {
             Activity replyActivity;
-            string message;
-            Attachment attachment;
+            string message = null;
+            Attachment attachment = null;
 
             switch (turnContext.Activity.ChannelId)
             {
