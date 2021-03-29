@@ -417,7 +417,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             ITurnContext<IInvokeActivity> turnContext,
             MessagingExtensionQuery query,
             CancellationToken cancellationToken)
-       {
+        {
             var turnContextActivity = turnContext?.Activity;
             try
             {
@@ -1764,10 +1764,19 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             try
             {
+                this.logger.LogInformation("user accepted file consent");
                 var context = JObject.FromObject(fileConsentCardResponse.Context);
 
                 var client = this.clientFactory.CreateClient();
-                answersContentCache.TryGetValue(context["id"].Value<string>(), out byte[] answersContent);
+                bool result = answersContentCache.TryGetValue(context["id"].Value<string>(), out byte[] answersContent);
+                if (result)
+                {
+                    this.logger.LogInformation("found file for user");
+                }
+                else
+                {
+                    this.logger.LogError("did found file for user");
+                }
                 // TODO : Change to get the content of the output file from Context
                 var content = new ByteArrayContent(answersContent);
                 content.Headers.ContentLength = answersContent.Length;
@@ -1775,9 +1784,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 var response = await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, content, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
+                this.logger.LogInformation("uploaded file");
             }
             catch (Exception e)
             {
+                this.logger.LogError(e, "failed to upload file");
                 await this.FileUploadFailedAsync(turnContext, e.ToString(), cancellationToken);
             }
         }
