@@ -4,10 +4,12 @@
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <DocumentationFile>bin\Microsoft.Teams.Apps.FAQPlusPlus.xml</DocumentationFile>
     <LangVersion>latest</LangVersion>
+    <UserSecretsId>1afe81f2-7b30-4dc0-b0a3-263cb283f294</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="AdaptiveCards" Version="1.2.4" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="2.12.3" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.14.0" />
     <PackageReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker" Version="3.0.0-preview.1" />
