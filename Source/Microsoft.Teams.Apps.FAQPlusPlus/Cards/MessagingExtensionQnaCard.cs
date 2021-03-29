@@ -482,11 +482,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                     string customMessage = string.Empty;
 
                     DateTime createdAt = default;
-                    if (qnaDocument.Metadata.Count > 1)
-                    {
-                        var createdAtvalue = qnaDocument.Metadata.FirstOrDefault(metadata => metadata.Name == Constants.MetadataCreatedAt)?.Value;
-                        createdAt = createdAtvalue != null ? new DateTime(long.Parse(createdAtvalue, CultureInfo.InvariantCulture)) : default;
-                    }
+                    var createdAtvalue = qnaDocument.Metadata.FirstOrDefault(metadata => metadata.Name == Constants.MetadataCreatedAt)?.Value;
+                    createdAt = createdAtvalue != null ? new DateTime(long.Parse(createdAtvalue, CultureInfo.InvariantCulture)) : default;
 
                     string conversationId = string.Empty;
                     string activityId = string.Empty;
@@ -505,8 +502,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
 
                     string metadataCreatedAt = string.Empty;
 
-                    if (qnaDocument.Metadata.Count > 1)
+                    if (qnaDocument.Metadata.Any(x => x.Name == Constants.MetadataConversationId))
                     {
+                        // if the question was created in a conversation (or was migrated from manual)
                         activityReferenceId = qnaDocument.Metadata.FirstOrDefault(metadata => metadata.Name == Constants.MetadataActivityReferenceId)?.Value;
                         conversationId = qnaDocument.Metadata.FirstOrDefault(metadata => metadata.Name == Constants.MetadataConversationId)?.Value;
                         activityId = activitiesData?.FirstOrDefault(activity => activity.ActivityReferenceId == activityReferenceId)?.ActivityId;
@@ -516,6 +514,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                     else
                     {
                         customMessage = string.IsNullOrEmpty(metadataCreatedAt) ? Strings.ManuallyAddedQuestionMessage : string.Empty;
+                        dateString = "be sure to send this message before clicking 'migrate'";
                     }
 
                     var card = new AdaptiveCard(new AdaptiveSchemaVersion(1, 0))
@@ -544,6 +543,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
 
                     if (!string.IsNullOrEmpty(conversationId) && !string.IsNullOrEmpty(activityId))
                     {
+                        // if the question was added to a conversation
                         var threadId = HttpUtility.UrlDecode(conversationId);
                         var messageId = activityId;
                         card.Actions.Add(
@@ -552,6 +552,29 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                                 Title = Strings.GoToThread,
                                 Url = new Uri($"{GoToOriginalThreadUrl}{threadId}/{messageId}"),
                             });
+                    }
+                    else
+                    {
+                        // if the question was added manually, provide the option to migrate to this conversation
+                        card.Actions.Add(new AdaptiveSubmitAction()
+                        {
+                            Title = "MIGRATE QNA",
+                            Data = new AdaptiveSubmitActionData
+                            {
+                                MsTeams = new CardAction
+                                {
+                                    Type = CardActionType,
+                                },
+                                OriginalQuestion = qnaDocument.Questions[0],
+                                UpdatedQuestion = qnaDocument.Questions[0],
+                                Description = answer,
+                                Title = string.Empty,
+                                Subtitle = string.Empty,
+                                ImageUrl = string.Empty,
+                                RedirectionUrl = string.Empty,
+                                UpdateHistoryData = string.Empty,
+                            },
+                        });
                     }
 
                     ThumbnailCard previewCard = new ThumbnailCard

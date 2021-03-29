@@ -112,7 +112,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <param name="updatedQuestion">Updated question text.</param>
         /// <param name="question">Original question text.</param>
         /// <returns>Perfomed action task.</returns>
-        public async Task UpdateQnaAsync(int questionId, string answer, string updatedBy, string updatedQuestion, string question)
+        public async Task UpdateQnaAsync(int questionId, string answer, string updatedBy, string updatedQuestion, string question, string conversationId = null, string activityReferenceId = null)
         {
             var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
             var questions = default(UpdateQnaDTOQuestions);
@@ -127,7 +127,23 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
             }
 
             // Update knowledgebase.
-            await this.qnaMakerClient.Knowledgebase.UpdateAsync(knowledgeBaseId, new UpdateKbOperationDTO
+            List<MetadataDTO> metadataDTOs = new List<MetadataDTO>()
+                                {
+                                    new MetadataDTO() { Name = Constants.MetadataUpdatedAt, Value = DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture) },
+                                    new MetadataDTO() { Name = Constants.MetadataUpdatedBy, Value = updatedBy },
+                                };
+
+            if (activityReferenceId != null)
+            {
+                metadataDTOs.Add(new MetadataDTO() { Name = Constants.MetadataActivityReferenceId, Value = activityReferenceId });
+            }
+
+            if (conversationId != null)
+            {
+                metadataDTOs.Add(new MetadataDTO() { Name = Constants.MetadataConversationId, Value = HttpUtility.UrlEncode(conversationId) });
+            }
+
+            await qnaMakerClient.Knowledgebase.UpdateAsync(knowledgeBaseId, new UpdateKbOperationDTO
             {
                 // Create JSON of changes.
                 Add = null,
@@ -143,11 +159,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
                             Questions = questions,
                             Metadata = new UpdateQnaDTOMetadata()
                             {
-                                Add = new List<MetadataDTO>()
-                                {
-                                    new MetadataDTO() { Name = Constants.MetadataUpdatedAt, Value = DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture) },
-                                    new MetadataDTO() { Name = Constants.MetadataUpdatedBy, Value = updatedBy },
-                                },
+                                Add = metadataDTOs,
                             },
                         },
                     },

@@ -417,7 +417,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             ITurnContext<IInvokeActivity> turnContext,
             MessagingExtensionQuery query,
             CancellationToken cancellationToken)
-        {
+       {
             var turnContextActivity = turnContext?.Activity;
             try
             {
@@ -657,6 +657,13 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             var activityReferenceId = Guid.NewGuid().ToString();
             await this.qnaServiceProvider.AddQnaAsync(qnaPairEntity.UpdatedQuestion?.Trim(), combinedDescription, turnContext.Activity.From.AadObjectId, turnContext.Activity.Conversation.Id, activityReferenceId).ConfigureAwait(false);
             qnaPairEntity.IsTestKnowledgeBase = true;
+            await SendNewQnAPairActivity(turnContext, qnaPairEntity, isRichCard, activityReferenceId, cancellationToken).ConfigureAwait(false);
+
+            return default;
+        }
+
+        private async Task SendNewQnAPairActivity(ITurnContext turnContext, AdaptiveSubmitActionData qnaPairEntity, bool isRichCard, string activityReferenceId, CancellationToken cancellationToken)
+        {
             ResourceResponse activityResponse;
 
             // Rich card as response.
@@ -678,8 +685,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             {
                 this.logger.LogInformation($"Unable to add activity data in table storage.");
             }
-
-            return default;
         }
 
         /// <summary>
@@ -1341,7 +1346,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             if (searchResult.Id != -1 && isSameQuestion)
             {
                 int qnaPairId = searchResult.Id.Value;
-                await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion).ConfigureAwait(false);
                 this.logger.LogInformation($"Question updated by: {turnContext.Activity.Conversation.AadObjectId}");
                 Attachment attachment = new Attachment();
                 if (qnaPairEntity.IsRichCard)
@@ -1357,16 +1361,32 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     attachment = MessagingExtensionQnaCard.ShowNormalCard(qnaPairEntity, turnContext.Activity.From.Name, actionPerformed: Strings.LastEditedText);
                 }
 
-                var activityId = this.activityStorageProvider.GetAsync(qnaAnswerResponse.Answers.First().Metadata.FirstOrDefault(x => x.Name == Constants.MetadataActivityReferenceId)?.Value).Result.FirstOrDefault().ActivityId;
-                var updateCardActivity = new Activity(ActivityTypes.Message)
+                string activityRefId = qnaAnswerResponse.Answers.First().Metadata.FirstOrDefault(x => x.Name == Constants.MetadataActivityReferenceId)?.Value;
+                if (activityRefId != null)
                 {
-                    Id = activityId,
-                    Conversation = turnContext.Activity.Conversation,
-                    Attachments = new List<Attachment> { attachment },
-                };
+                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion).ConfigureAwait(false);
+                    IList<ActivityEntity> activityEntities = await activityStorageProvider.GetAsync(activityRefId);
+                    var activityId = activityEntities.FirstOrDefault().ActivityId;
+                    var updateCardActivity = new Activity(ActivityTypes.Message)
+                    {
+                        Id = activityId,
+                        Conversation = turnContext.Activity.Conversation,
+                        Attachments = new List<Attachment> { attachment },
+                    };
 
-                // Send edited question and answer card as response.
-                await turnContext.UpdateActivityAsync(updateCardActivity, cancellationToken: default).ConfigureAwait(false);
+                    // Send edited question and answer card as response.
+                    await turnContext.UpdateActivityAsync(updateCardActivity, cancellationToken: default).ConfigureAwait(false);
+                }
+                else
+                {
+                    // this is a migrated kb so it doesnt have an activity yet.
+                    // send the card as if it was newly created
+
+                    // TODO
+                    activityRefId = Guid.NewGuid().ToString();
+                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion, turnContext.Activity.Conversation.Id, activityRefId);
+                    await SendNewQnAPairActivity(turnContext, qnaPairEntity, true, activityRefId, cancellationToken: default);
+                }
             }
             else
             {
