@@ -56,6 +56,13 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
             }
         }
 
+        /// <summary>
+        /// Retrieves the text of an cell if it is a string table lookup. Otherwise
+        /// returns null
+        /// </summary>
+        /// <param name="cell">the cell</param>
+        /// <param name="stringTable">the string table</param>
+        /// <returns>the text of the cell</returns>
         private static string GetTextFromCell(Cell cell, SharedStringTablePart stringTable)
         {
             if (cell == null)
@@ -64,7 +71,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
             }
 
             string cellText = cell.CellValue?.Text;
-            if (cell.DataType.Value == CellValues.SharedString && !string.IsNullOrEmpty(cellText))
+            if (cell.DataType?.Value == CellValues.SharedString && !string.IsNullOrEmpty(cellText))
             {
                 cellText = stringTable.SharedStringTable.ElementAt(int.Parse(cellText)).InnerText;
             }
