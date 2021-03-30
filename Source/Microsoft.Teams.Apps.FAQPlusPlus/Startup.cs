@@ -99,7 +99,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
                 botSettings.AppBaseUri = this.Configuration["AppBaseUri"];
                 botSettings.MicrosoftAppId = this.Configuration["MicrosoftAppId"];
                 botSettings.TenantId = this.Configuration["TenantId"];
-            });
+                botSettings.StorageConnectionString = this.Configuration["StorageConnectionString"];
+                botSettings.UseBlobStorageForBulkUploadResults = Convert.ToBoolean(this.Configuration["UseBlobStorageForBulkUploadResults"]);
+           });
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
             services.AddSingleton<Common.Providers.IConfigurationDataProvider>(new Common.Providers.ConfigurationDataProvider(this.Configuration["StorageConnectionString"]));

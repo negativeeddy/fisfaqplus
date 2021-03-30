@@ -28,5 +28,17 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration
         /// Gets or sets access tenant id string.
         /// </summary>
         public string TenantId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the Azure storage connection string
+        /// </summary>
+        public string StorageConnectionString { get; set; }
+
+        /// <summary>
+        /// Gets or sets the value indicating whether to use the normal
+        /// upload process for bulk QnA answers or to store them in blob storage
+        /// </summary>
+        public bool UseBlobStorageForBulkUploadResults = false;
+
     }
 }

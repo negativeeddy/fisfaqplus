@@ -13,11 +13,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using System.Net;
     using System.Net.Http;
     using System.Net.Http.Headers;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.ApplicationInsights.DataContracts;
-    using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Teams;
@@ -851,7 +849,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         question.Answer = await this.GenerateAnswer(question.Question);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         question.Answer = "ERROR generating answer";
                     }
@@ -868,7 +866,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
             this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
 
-            string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
+            string newFilename = turnContext.Activity.Id + Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
 
             byte[] answersContent = null;
             switch (extension)
@@ -1703,6 +1701,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
         private async Task SendFileCardAsync(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
         {
+            if (options.UseBlobStorageForBulkUploadResults)
+            {
+                await SendBulkuploadResultsToBlobStorage(turnContext, questionFilename, answerFilename, bytes, cancellationToken);
+                return;
+            }
+
             Activity replyActivity;
             string message = null;
             Attachment attachment = null;
@@ -1767,6 +1771,67 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             replyActivity = turnContext.Activity.CreateReply(message);
             replyActivity.Attachments = new List<Attachment>() { attachment };
             await turnContext.SendActivityAsync(replyActivity, cancellationToken);
+        }
+
+        private async Task SendBulkuploadResultsToBlobStorage(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
+        {
+            // Replace with actual connection string
+            string connection = options.StorageConnectionString;
+            string containerName = "bulkanswers";
+
+            // Create client connection
+            var svcClient = new global::Azure.Storage.Blobs.BlobServiceClient(connection);
+
+            // Create a container reference
+            var container = svcClient.GetBlobContainerClient(containerName);
+
+            // Create a blob reference
+            var blob = container.GetBlobClient(answerFilename);
+
+            // Upload stream
+            MemoryStream stream = new MemoryStream(bytes);
+            var info = await blob.UploadAsync(stream, cancellationToken);
+
+            Uri uri = GetServiceSasUriForBlob(blob, containerName);
+
+            string message = uri != null ? $"All done, please download [{answerFilename}]({uri}) (this link will expire in 1 hour)"
+                                         : "I was unable to upload the results file, please try again later";
+            await turnContext.SendActivityAsync(message);
+        }
+
+        private Uri GetServiceSasUriForBlob(global::Azure.Storage.Blobs.BlobClient blobClient,
+                                                string containerName, string storedPolicyName = null)
+        {
+            // Check whether this BlobClient object has been authorized with Shared Key.
+            if (blobClient.CanGenerateSasUri)
+            {
+                // Create a SAS token that's valid for one hour.
+                var sasBuilder = new global::Azure.Storage.Sas.BlobSasBuilder()
+                {
+                    BlobContainerName = containerName,
+                    BlobName = blobClient.Name,
+                    Resource = "b"
+                };
+
+                if (storedPolicyName == null)
+                {
+                    sasBuilder.ExpiresOn = DateTimeOffset.UtcNow.AddHours(1);
+                    sasBuilder.SetPermissions(global::Azure.Storage.Sas.BlobSasPermissions.Read);
+                }
+                else
+                {
+                    sasBuilder.Identifier = storedPolicyName;
+                }
+
+                Uri sasUri = blobClient.GenerateSasUri(sasBuilder);
+                return sasUri;
+            }
+            else
+            {
+                logger.LogError(@"BlobClient must be authorized with Shared Key 
+                          credentials to create a service SAS.");
+                return null;
+            }
         }
 
         /// <summary>
