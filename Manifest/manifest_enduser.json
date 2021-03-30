@@ -3,19 +3,19 @@
   "manifestVersion": "1.5",
   "version": "1.0.0",
   "id": "aba30cfc-05df-4002-b956-a70996b12a54",
-  "packageName": "benwilli.com.microsoft.teams.faqplus",
+  "packageName": "com.microsoft.teams.faqplus",
   "developer": {
-    "name": "benwilli demo",
-    "websiteUrl": "https://microsoft.com",
-    "privacyUrl": "https://microsoft.com",
-    "termsOfUseUrl": "https://microsoft.com"
+    "name": "<<companyName>>",
+    "websiteUrl": "<<websiteUrl>>",
+    "privacyUrl": "<<privacyUrl>>",
+    "termsOfUseUrl": "<<termsOfUseUrl>>"
   },
   "icons": {
     "color": "color.png",
     "outline": "outline.png"
   },
   "name": {
-    "short": "Benwilli DEMO FAQ Plus"
+    "short": "FAQ Plus"
   },
   "description": {
     "short": "A friendly FAQ bot that answers questions and connects you to experts.",
@@ -24,7 +24,7 @@
   "accentColor": "#64A2CC",
   "bots": [
     {
-      "botId": "9988304d-0ff2-4921-b7c5-6d07f25d9da0",
+      "botId": "<<botId>>",
       "scopes": [
         "personal",
         "team"
@@ -50,7 +50,7 @@
           ]
         }
       ],
-      "supportsFiles": true,
+      "supportsFiles": false,
       "isNotificationOnly": false
     }
   ],
@@ -58,7 +58,7 @@
     {
       "entityId": "help",
       "name": "Help",
-      "contentUrl": "https://FaqPlusBenwilli.azurewebsites.net/help?theme={theme}",
+      "contentUrl": "https://<<appDomain>>/help?theme={theme}",
       "scopes": [
         "personal"
       ]
@@ -69,6 +69,6 @@
     "messageTeamMembers"
   ],
   "validDomains": [
-    "FaqPlusBenwilli.azurewebsites.net"
+    "<<appDomain>>"
   ]
 }
