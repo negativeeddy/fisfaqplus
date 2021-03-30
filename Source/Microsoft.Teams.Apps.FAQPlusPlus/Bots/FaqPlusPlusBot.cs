@@ -1396,11 +1396,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 else
                 {
                     // this is a migrated kb so it doesnt have an activity yet.
-                    // send the card as if it was newly created
+                    // send the card as if it was newly created to a new conversation thread
+                    string conversationID = turnContext.Activity.Conversation.Id;
 
-                    // TODO
+                    // send to new conversation ID in teams - so strip off the thread ID if its there
+                    conversationID = conversationID.Substring(0, conversationID.IndexOf(";"));
                     activityRefId = Guid.NewGuid().ToString();
-                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion, turnContext.Activity.Conversation.Id, activityRefId);
+                    turnContext.Activity.Conversation.Id = conversationID;
+                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion, conversationID, activityRefId);
                     await SendNewQnAPairActivity(turnContext, qnaPairEntity, true, activityRefId, cancellationToken: default);
                 }
             }

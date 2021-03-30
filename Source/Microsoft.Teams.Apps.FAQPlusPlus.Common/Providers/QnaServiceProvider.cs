@@ -141,6 +141,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
             if (conversationId != null)
             {
                 metadataDTOs.Add(new MetadataDTO() { Name = Constants.MetadataConversationId, Value = HttpUtility.UrlEncode(conversationId) });
+                metadataDTOs.Add(new MetadataDTO() { Name = Constants.MetadataCreatedAt, Value = DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture) });
             }
 
             await qnaMakerClient.Knowledgebase.UpdateAsync(knowledgeBaseId, new UpdateKbOperationDTO
