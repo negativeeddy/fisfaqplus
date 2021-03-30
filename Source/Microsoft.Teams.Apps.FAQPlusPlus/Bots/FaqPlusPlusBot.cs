@@ -868,7 +868,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
             this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
 
-            string newFilename = Path.GetFileNameWithoutExtension(filename) + "_A" + extension;
+            string newFilename = Path.GetFileNameWithoutExtension(filename) + turnContext.Activity.Id + extension;
 
             byte[] answersContent = null;
             switch (extension)
