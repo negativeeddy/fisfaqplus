@@ -358,3 +358,8 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 /Source/TestKB
+/fisfaqpv2.config
+/fisfaqpv2-qnamaker.config
+/fisfaqpv2-function.config
+/fisfaqpv2-config.config
+/FAQPlus
