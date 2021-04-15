@@ -5,6 +5,7 @@
 namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Globalization;
     using System.IO;
@@ -20,6 +21,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Teams;
+    using Microsoft.Bot.Connector;
     using Microsoft.Bot.Connector.Authentication;
     using Microsoft.Bot.Schema;
     using Microsoft.Bot.Schema.Teams;
@@ -78,6 +80,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private const string ChangeStatus = "change status";
 
         /// <summary>
+        /// File extension for CSV files
+        /// </summary>
+        private const string CSV_EXTENSION = ".csv";
+
+        /// <summary>
+        /// File extension for Excel files
+        /// </summary>
+        private const string XLSX_EXTENSION = ".xlsx";
+        private const string XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        private const string CSV_MIME_TYPE = "text/csv";
+
+        /// <summary>
         /// Represents a set of key/value application configuration properties for FaqPlusPlus bot.
         /// </summary>
         private readonly BotSettings options;
@@ -97,7 +111,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IHttpClientFactory clientFactory;
 
-        private static string answersContent;
+        private static ConcurrentDictionary<string, byte[]> answersContentCache = new ConcurrentDictionary<string, byte[]>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
@@ -209,7 +223,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 this.logger.LogInformation($"from: {message.From?.Id}, conversation: {message.Conversation.Id}, replyToId: {message.ReplyToId}");
                 await this.SendTypingIndicatorAsync(turnContext).ConfigureAwait(false);
 
-                switch (message.Conversation.ConversationType.ToLower())
+                switch (message.Conversation.ConversationType?.ToLower())
                 {
                     case ConversationTypePersonal:
                         await this.OnMessageActivityInPersonalChatAsync(
@@ -224,7 +238,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                             turnContext,
                             cancellationToken).ConfigureAwait(false);
                         break;
-
+#if DEBUG
+                    case null:
+                        // in emulator treat all messages as personal chat
+                        await this.OnMessageActivityInPersonalChatAsync(
+                            message,
+                            turnContext,
+                            cancellationToken).ConfigureAwait(false);
+                        break;
+#endif
                     default:
                         this.logger.LogWarning($"Received unexpected conversationType {message.Conversation.ConversationType}");
                         break;
@@ -267,7 +289,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     return;
                 }
 
-                switch (activity.Conversation.ConversationType.ToLower())
+                switch (activity.Conversation.ConversationType?.ToLower())
                 {
                     case ConversationTypePersonal:
                         await this.OnMembersAddedToPersonalChatAsync(activity.MembersAdded, turnContext).ConfigureAwait(false);
@@ -635,6 +657,13 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             var activityReferenceId = Guid.NewGuid().ToString();
             await this.qnaServiceProvider.AddQnaAsync(qnaPairEntity.UpdatedQuestion?.Trim(), combinedDescription, turnContext.Activity.From.AadObjectId, turnContext.Activity.Conversation.Id, activityReferenceId).ConfigureAwait(false);
             qnaPairEntity.IsTestKnowledgeBase = true;
+            await SendNewQnAPairActivity(turnContext, qnaPairEntity, isRichCard, activityReferenceId, cancellationToken).ConfigureAwait(false);
+
+            return default;
+        }
+
+        private async Task SendNewQnAPairActivity(ITurnContext turnContext, AdaptiveSubmitActionData qnaPairEntity, bool isRichCard, string activityReferenceId, CancellationToken cancellationToken)
+        {
             ResourceResponse activityResponse;
 
             // Rich card as response.
@@ -656,8 +685,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             {
                 this.logger.LogInformation($"Unable to add activity data in table storage.");
             }
-
-            return default;
         }
 
         /// <summary>
@@ -783,54 +810,87 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 return;
             }
 
-            // Add the code to check if the file attachment was received
-            bool messageWithFileDownloadInfo = turnContext.Activity.Attachments?[0].ContentType == FileDownloadInfo.ContentType;
+            // Check if a file attachment of questions was received
+            (string filename, IList<AnswerItem> questions) = await TryGetQuestionsFromAttachment(turnContext.Activity);
 
-            // If we have file attachment, process the CSV file to find out the answers from qnA maker
-            if (messageWithFileDownloadInfo)
+            // If we have a questions from the attachment, process the them to find out the answers from qnA maker
+            if (questions != null)
             {
-                var file = turnContext.Activity.Attachments[0];
-                var fileDownload = JObject.FromObject(file.Content).ToObject<FileDownloadInfo>();
-                string filePath = Path.Combine("Files", file.Name);
-                var client = clientFactory.CreateClient();
-                var response = await client.GetAsync(fileDownload.DownloadUrl);
-                // Read the file content
-                var fileContent = await response.Content.ReadAsStringAsync();
+                await ProcessInPersonalChatQuestionsAttachment(turnContext, filename, questions, cancellationToken);
 
-                // Create QnA object to store the answers from QnA
-                var qnA = new QnA();
-                var answers = new List<AnswerItem>();
-                CSVHelper csv = new CSVHelper(fileContent, "\",\"", true);
-                foreach (string[] line in csv)
+            }
+            else
+            {
+                // Process code as-is for non attachment
+                await ProcessInPersonalChatMessage(message, turnContext);
+            }
+        }
+
+        private async Task ProcessInPersonalChatQuestionsAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, CancellationToken cancellationToken)
+        {
+            string extension = Path.GetExtension(filename);
+
+            await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file with {questions.Count} questions. One moment while I consult QnA Maker for the answers");
+            await SendTypingIndicatorAsync(turnContext);
+
+            var sw = new System.Diagnostics.Stopwatch();
+            sw.Start();
+
+            // Create QnA object to store the answers from QnA
+            for (int i = 0; i < questions.Count; i++)
+            {
+                var question = questions[i];
+                if (string.IsNullOrEmpty(question.Question))
                 {
-                    var answer = new AnswerItem
+                    question.Answer = "ERROR reading input";
+                    question.Question = "ERROR reading input";
+                }
+                else
+                {
+                    try
                     {
-                        Question = line[0],
-                        Answer = await this.GenerateAnswer(line[0]),
-                    };
-                    answers.Add(answer);
+                        question.Answer = await this.GenerateAnswer(question.Question);
+                    }
+                    catch(Exception ex)
+                    {
+                        question.Answer = "ERROR generating answer";
+                    }
                 }
 
-                qnA.Answers = answers;
-
-                var csvOut = new StringBuilder();
-                var header = string.Format("{0},{1}", "Question", "Answer");
-                csvOut.AppendLine(header);
-                foreach (var answer in qnA.Answers)
+                if (i % 100 == 0 && i > 0)
                 {
-                    var q = answer.Question;
-                    var a = answer.Answer;
-                    var qapair = string.Format("{0},{1}", q, a);
-                    csvOut.AppendLine(qapair);
+                    await turnContext.SendActivityAsync($"fyi - I've finished {i} so far");
+                    await SendTypingIndicatorAsync(turnContext);
                 }
-
-                string filename = Path.GetFileNameWithoutExtension(file.Name) + "_A" + ".csv";
-                long fileSize = csvOut.Length;
-                answersContent = csvOut.ToString();
-                this.SendFileCardAsync(turnContext, filename, fileSize, cancellationToken).RunSynchronously();
             }
 
-            // Process code as-is for non attachment
+            sw.Stop();
+
+            this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
+
+            string newFilename = Path.GetFileNameWithoutExtension(filename) + turnContext.Activity.Id + extension;
+
+            byte[] answersContent = null;
+            switch (extension)
+            {
+                case CSV_EXTENSION:
+                    answersContent = CSVHelper.CsvFromQuestions(questions);
+                    break;
+                case XLSX_EXTENSION:
+                    MemoryStream stream = new MemoryStream();
+                    XlsxHelper.XlsxFromQuestions(questions, stream);
+                    stream.Position = 0;
+                    answersContent = stream.ToArray();
+                    break;
+            }
+
+            answersContentCache.AddOrUpdate(turnContext.Activity.From.Id, answersContent, (_, _) => answersContent);
+
+            await this.SendFileCardAsync(turnContext, filename, newFilename, answersContent, cancellationToken);
+        }
+
+        private async Task ProcessInPersonalChatMessage(IMessageActivity message, ITurnContext<IMessageActivity> turnContext)
+        {
             string text = message.Text?.ToLower()?.Trim() ?? string.Empty;
 
             switch (text)
@@ -856,6 +916,67 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     await this.GetQuestionAnswerReplyAsync(turnContext, message).ConfigureAwait(false);
                     break;
             }
+        }
+
+        private async Task<(string name, IList<AnswerItem> answers)> TryGetQuestionsFromAttachment(IMessageActivity activity)
+        {
+            string contentUrl = null;
+            string filename = null;
+            IList<AnswerItem> answerItems = null;
+
+            if (activity.ChannelId == Channels.Msteams)
+            {
+                // check for Teams attachments
+                bool messageWithFileDownloadInfo = activity.Attachments?[0].ContentType == FileDownloadInfo.ContentType;
+                var file = activity.Attachments?[0];
+                filename = file?.Name;
+
+                // check for attachments from Teams
+                if (messageWithFileDownloadInfo)
+                {
+                    var fileDownload = JObject.FromObject(file.Content).ToObject<FileDownloadInfo>();
+                    string filePath = Path.Combine("Files", filename);
+                    contentUrl = fileDownload.DownloadUrl;
+                }
+            }
+            else
+            {
+                // check for regular attachments (e.g. from the emulator)
+                switch (activity.Attachments?[0].ContentType)
+                {
+                    case CSV_MIME_TYPE:
+                        filename = activity.Attachments[0].Name;
+                        contentUrl = activity.Attachments[0].ContentUrl;
+                        break;
+                    case XLSX_MIME_TYPE:
+                        filename = activity.Attachments[0].Name;
+                        contentUrl = activity.Attachments[0].ContentUrl;
+                        break;
+                }
+            }
+
+            // Read the file content
+            if (contentUrl != null)
+            {
+                var client = clientFactory.CreateClient();
+                var response = await client.GetAsync(contentUrl);
+
+                switch (Path.GetExtension(filename))
+                {
+                    case CSV_EXTENSION:
+                        string fileContent = await response.Content.ReadAsStringAsync();
+                        answerItems = CSVHelper.AnswerListFromCsv(fileContent);
+                        break;
+                    case XLSX_EXTENSION:
+                        using (Stream stream = await response.Content.ReadAsStreamAsync())
+                        {
+                            answerItems = XlsxHelper.QuestionsFromXlsx(stream);
+                        }
+                        break;
+                }
+            }
+
+            return (filename, answerItems);
         }
 
         /// <summary>
@@ -1205,6 +1326,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <returns>Boolean value where true represent tenant is valid while false represent tenant in not valid.</returns>
         private bool IsActivityFromExpectedTenant(ITurnContext turnContext)
         {
+#if DEBUG
+            // only check Tenant when in Teams
+            if (turnContext.Activity.ChannelId != Channels.Msteams)
+            {
+                return true;
+            }
+            return true;
+#endif
             return turnContext.Activity.Conversation.TenantId == this.options.TenantId;
         }
 
@@ -1233,7 +1362,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             if (searchResult.Id != -1 && isSameQuestion)
             {
                 int qnaPairId = searchResult.Id.Value;
-                await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion).ConfigureAwait(false);
                 this.logger.LogInformation($"Question updated by: {turnContext.Activity.Conversation.AadObjectId}");
                 Attachment attachment = new Attachment();
                 if (qnaPairEntity.IsRichCard)
@@ -1249,16 +1377,35 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     attachment = MessagingExtensionQnaCard.ShowNormalCard(qnaPairEntity, turnContext.Activity.From.Name, actionPerformed: Strings.LastEditedText);
                 }
 
-                var activityId = this.activityStorageProvider.GetAsync(qnaAnswerResponse.Answers.First().Metadata.FirstOrDefault(x => x.Name == Constants.MetadataActivityReferenceId)?.Value).Result.FirstOrDefault().ActivityId;
-                var updateCardActivity = new Activity(ActivityTypes.Message)
+                string activityRefId = qnaAnswerResponse.Answers.First().Metadata.FirstOrDefault(x => x.Name == Constants.MetadataActivityReferenceId)?.Value;
+                if (activityRefId != null)
                 {
-                    Id = activityId,
-                    Conversation = turnContext.Activity.Conversation,
-                    Attachments = new List<Attachment> { attachment },
-                };
+                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion).ConfigureAwait(false);
+                    IList<ActivityEntity> activityEntities = await activityStorageProvider.GetAsync(activityRefId);
+                    var activityId = activityEntities.FirstOrDefault().ActivityId;
+                    var updateCardActivity = new Activity(ActivityTypes.Message)
+                    {
+                        Id = activityId,
+                        Conversation = turnContext.Activity.Conversation,
+                        Attachments = new List<Attachment> { attachment },
+                    };
 
-                // Send edited question and answer card as response.
-                await turnContext.UpdateActivityAsync(updateCardActivity, cancellationToken: default).ConfigureAwait(false);
+                    // Send edited question and answer card as response.
+                    await turnContext.UpdateActivityAsync(updateCardActivity, cancellationToken: default).ConfigureAwait(false);
+                }
+                else
+                {
+                    // this is a migrated kb so it doesnt have an activity yet.
+                    // send the card as if it was newly created to a new conversation thread
+                    string conversationID = turnContext.Activity.Conversation.Id;
+
+                    // send to new conversation ID in teams - so strip off the thread ID if its there
+                    conversationID = conversationID.Substring(0, conversationID.IndexOf(";"));
+                    activityRefId = Guid.NewGuid().ToString();
+                    turnContext.Activity.Conversation.Id = conversationID;
+                    await this.qnaServiceProvider.UpdateQnaAsync(qnaPairId, answer, turnContext.Activity.From.AadObjectId, qnaPairEntity.UpdatedQuestion, qnaPairEntity.OriginalQuestion, conversationID, activityRefId);
+                    await SendNewQnAPairActivity(turnContext, qnaPairEntity, true, activityRefId, cancellationToken: default);
+                }
             }
             else
             {
@@ -1553,33 +1700,75 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 var answerData = queryResult.Answers.First();
                 answer = answerData.Answer;
             }
-            return answer;
+            return answer
+                ;
         }
 
-        private async Task SendFileCardAsync(ITurnContext turnContext, string filename, long filesize, CancellationToken cancellationToken)
+        private async Task SendFileCardAsync(ITurnContext turnContext, string questionFilename, string answerFilename, byte[] bytes, CancellationToken cancellationToken)
         {
-            var consentContext = new Dictionary<string, string>
-            {
-                { "filename", filename },
-            };
+            Activity replyActivity;
+            string message = null;
+            Attachment attachment = null;
 
-            var fileCard = new FileConsentCard
+            switch (turnContext.Activity.ChannelId)
             {
-                Description = "Attached is the CSV file with answers from QnA Maker",
-                SizeInBytes = filesize,
-                AcceptContext = consentContext,
-                DeclineContext = consentContext,
-            };
+                case Channels.Msteams:
+                    message = $"I now have the answers for your questions from QnA Maker. Please grant permission for me to upload them to your OneDrive. Thanks!";
 
-            var asAttachment = new Attachment
-            {
-                Content = fileCard,
-                ContentType = FileConsentCard.ContentType,
-                Name = filename,
-            };
+                    var consentContext = new
+                    {
+                        filename = "filename",
+                        id = turnContext.Activity.From.Id,
+                    };
 
-            var replyActivity = turnContext.Activity.CreateReply();
-            replyActivity.Attachments = new List<Attachment>() { asAttachment };
+                    var fileCard = new FileConsentCard
+                    {
+                        Description = $"QnA Maker answers for \"{answerFilename}\"",
+                        SizeInBytes = bytes.Length,
+                        AcceptContext = consentContext,
+                        DeclineContext = consentContext,
+                    };
+
+                    attachment = new Attachment
+                    {
+                        Content = fileCard,
+                        ContentType = FileConsentCard.ContentType,
+                        Name = answerFilename,
+                    };
+
+                    break;
+#if DEBUG
+                default:
+                    message = $"I now have the answers for your questions from QnA Maker.";
+
+                    string base64Data = Convert.ToBase64String(bytes);
+                    string extension = Path.GetExtension(answerFilename);
+
+                    string contentType;
+                    switch (extension)
+                    {
+                        case CSV_EXTENSION:
+                            contentType = CSV_MIME_TYPE;
+                            break;
+                        case XLSX_EXTENSION:
+                            contentType = XLSX_MIME_TYPE;
+                            break;
+                        default:
+                            throw new InvalidOperationException("Unknown file type");
+                    }
+
+                    attachment = new Attachment
+                    {
+                        Name = answerFilename,
+                        ContentType = contentType,
+                        ContentUrl = $"data:{contentType};base64,{base64Data}",
+                    };
+                    break;
+#endif
+            }
+
+            replyActivity = turnContext.Activity.CreateReply(message);
+            replyActivity.Attachments = new List<Attachment>() { attachment };
             await turnContext.SendActivityAsync(replyActivity, cancellationToken);
         }
 
@@ -1594,17 +1783,31 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             try
             {
-                JToken context = JObject.FromObject(fileConsentCardResponse.Context);
+                this.logger.LogInformation("user accepted file consent");
+                var context = JObject.FromObject(fileConsentCardResponse.Context);
 
                 var client = this.clientFactory.CreateClient();
+                bool result = answersContentCache.TryGetValue(context["id"].Value<string>(), out byte[] answersContent);
+                if (result)
+                {
+                    this.logger.LogInformation("found file for user");
+                }
+                else
+                {
+                    this.logger.LogError("did found file for user");
+                }
                 // TODO : Change to get the content of the output file from Context
-                //var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(turnContext.Activity.Value.ToString())));
-                var fileContent = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(answersContent)));
-                await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, fileContent, cancellationToken);
+                var content = new ByteArrayContent(answersContent);
+                content.Headers.ContentLength = answersContent.Length;
+                content.Headers.ContentRange = new ContentRangeHeaderValue(0, answersContent.Length - 1, answersContent.Length);
+                var response = await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, content, cancellationToken);
+                response.EnsureSuccessStatusCode();
                 await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
+                this.logger.LogInformation("uploaded file");
             }
             catch (Exception e)
             {
+                this.logger.LogError(e, "failed to upload file");
                 await this.FileUploadFailedAsync(turnContext, e.ToString(), cancellationToken);
             }
         }

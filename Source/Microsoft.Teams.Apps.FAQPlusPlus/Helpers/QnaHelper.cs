@@ -172,6 +172,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
 
         [JsonProperty("question")]
         public string Question { get; set; }
+
+        [JsonProperty("metadata")]
+        public string Metadata { get; set; }
     }
 
     /// <summary>

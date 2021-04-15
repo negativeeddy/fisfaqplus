@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
@@ -33,6 +34,38 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
 
                 this.Add(values);
             }
+        }
+
+        public static IList<AnswerItem> AnswerListFromCsv(string fileContent)
+        {
+            CSVHelper csv = new CSVHelper(fileContent, ",", true);
+            var answers = from string[] line in csv
+                          select new AnswerItem
+                          {
+                              Question = line[0],
+                              Answer = null,
+                              Metadata = line[2],
+                          };
+            return answers.ToList();
+        }
+
+        public static byte[] CsvFromQuestions(IList<AnswerItem> questions)
+        {
+            var csvOut = new StringBuilder();
+            var header = "Question,Answer,Metadata";
+            csvOut.AppendLine(header);
+            foreach (var answer in questions)
+            {
+                var q = answer.Question;
+                var a = answer.Answer;
+                var m = answer.Metadata;
+                var qapair = string.Format("{0},{1},{2}", q, a, m);
+                csvOut.AppendLine(qapair);
+            }
+
+            var csvString = csvOut.ToString();
+            var bytes = UTF8Encoding.UTF8.GetBytes(csvString);
+            return bytes;
         }
     }
 }
