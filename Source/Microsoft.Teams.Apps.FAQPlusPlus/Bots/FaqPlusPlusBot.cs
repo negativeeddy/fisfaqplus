@@ -884,7 +884,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     break;
             }
 
-            answersContentCache.AddOrUpdate(turnContext.Activity.From.Id, answersContent, (_, _) => answersContent);
+            answersContentCache.AddOrUpdate(turnContext.Activity.From.Id, answersContent, (_, __) => answersContent);
 
             await this.SendFileCardAsync(turnContext, filename, newFilename, answersContent, cancellationToken);
         }
