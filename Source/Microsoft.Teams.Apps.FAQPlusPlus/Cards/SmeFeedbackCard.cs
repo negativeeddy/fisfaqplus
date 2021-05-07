@@ -118,6 +118,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                             },
                         },
                     },
+                    new AdaptiveSubmitAction()
+                    {
+                        Title = Strings.EditButtonText,
+                        Data = new AdaptiveSubmitActionData
+                        {
+                            MsTeams = new CardAction
+                            {
+                                Type = "task/fetch",
+                            },
+                            QnaPairId = data.QnaPairId,
+                        },
+                    },
                 });
             }
 
