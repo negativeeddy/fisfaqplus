@@ -31,7 +31,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
             AdaptiveCard responseCard = new AdaptiveCard(new AdaptiveSchemaVersion(1, 2))
             {
                 Body = BuildResponseCardBody(response, userQuestion, response.Answer, appBaseUri, payload),
-                Actions = BuildListOfActions(userQuestion, response.Answer),
+                Actions = BuildListOfActions(userQuestion, response.Answer, payload.QnaPairId),
             };
 
             return new Attachment
@@ -147,7 +147,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
         /// <param name="userQuestion">The user question - the actual question asked to the bot.</param>
         /// <param name="answer">The answer string.</param>
         /// <returns>A list of adaptive actions.</returns>
-        private static List<AdaptiveAction> BuildListOfActions(string userQuestion, string answer)
+        private static List<AdaptiveAction> BuildListOfActions(string userQuestion, string answer, int qnaPairId)
         {
             List<AdaptiveAction> actionsList = new List<AdaptiveAction>
             {
@@ -165,6 +165,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                         },
                         UserQuestion = userQuestion,
                         KnowledgeBaseAnswer = answer,
+                        QnaPairId = qnaPairId,
                     },
                 },
 
@@ -182,6 +183,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                         },
                         UserQuestion = userQuestion,
                         KnowledgeBaseAnswer = answer,
+                        QnaPairId = qnaPairId,
                     },
                 },
             };

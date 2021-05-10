@@ -121,5 +121,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Models
         /// Gets or sets a value indicating whether the card is displaying as preview.
         /// </summary>
         public bool IsPreviewCard { get; set; }
+
+        public int? QnaPairId { get; set; }
     }
 }

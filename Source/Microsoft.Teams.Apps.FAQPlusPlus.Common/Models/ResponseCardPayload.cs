@@ -31,5 +31,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Models
         /// Gets or sets a value indicating whether question is from prompt.
         /// </summary>
         public bool IsPrompt { get; set; }
+
+        public int QnaPairId { get; set; }
     }
 }

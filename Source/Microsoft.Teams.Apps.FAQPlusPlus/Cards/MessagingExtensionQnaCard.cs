@@ -946,7 +946,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
         /// <param name="userQuestion">Actual question asked by the user to the bot.</param>
         /// <param name="queryResult">Query result data.</param>
         /// <returns>End user response card as attachment.</returns>
-        public static Attachment GetEndUserRichCard(string userQuestion, QnASearchResult queryResult)
+        public static Attachment GetEndUserRichCard(string userQuestion, QnASearchResult queryResult, int qnaPairId)
         {
             var answerModel = JsonConvert.DeserializeObject<AnswerModel>(queryResult?.Answer);
             AdaptiveCard responseCard = new AdaptiveCard(new AdaptiveSchemaVersion(1, 0))
@@ -1035,6 +1035,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                            },
                            UserQuestion = userQuestion,
                            KnowledgeBaseAnswer = answerModel?.Description,
+                           QnaPairId = qnaPairId,
                        },
                    });
 

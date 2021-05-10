@@ -43,6 +43,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                 Description = payload.UserQuestion,     // Pre-populate the description with the user's question
                 UserQuestion = payload.UserQuestion,
                 KnowledgeBaseAnswer = payload?.KnowledgeBaseAnswer,
+                QnaPairId = payload.QnaPairId,
             };
 
             return GetCard(cardPayload, showValidationErrors: false);
@@ -168,6 +169,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                             },
                             UserQuestion = data.UserQuestion,
                             KnowledgeBaseAnswer = data.KnowledgeBaseAnswer,
+                            QnaPairId = data.QnaPairId,
                         },
                     },
                 },

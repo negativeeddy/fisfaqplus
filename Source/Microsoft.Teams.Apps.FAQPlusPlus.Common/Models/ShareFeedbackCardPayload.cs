@@ -31,5 +31,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Models
         /// provided by the user on response given by bot calling QnA Maker service.
         /// </summary>
         public string KnowledgeBaseAnswer { get; set; }
+
+        public AdaptiveSubmitActionData KBInfo { get; set; }
+        public int QnaPairId { get; set; }
     }
 }

@@ -321,7 +321,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <remarks>
         /// Reference link: https://docs.microsoft.com/en-us/dotnet/api/microsoft.bot.builder.teams.teamsactivityhandler.onteamstaskmodulefetchasync?view=botbuilder-dotnet-stable.
         /// </remarks>
-        protected override Task<TaskModuleResponse> OnTeamsTaskModuleFetchAsync(
+        protected override async Task<TaskModuleResponse> OnTeamsTaskModuleFetchAsync(
             ITurnContext<IInvokeActivity> turnContext,
             TaskModuleRequest taskModuleRequest,
             CancellationToken cancellationToken)
@@ -329,8 +329,34 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             try
             {
                 var postedValues = JsonConvert.DeserializeObject<AdaptiveSubmitActionData>(JObject.Parse(taskModuleRequest?.Data?.ToString()).ToString());
+
+                // if we are supploed just an ID, then load the qna from the Test environment database
+                if (postedValues.QnaPairId != null && string.IsNullOrEmpty(postedValues.OriginalQuestion))
+                {
+                    // lookup the qnapaird
+                    var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
+                    var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
+                    var answerData = qnaitems.FirstOrDefault(x => x.Id == postedValues.QnaPairId.Value);
+
+                    postedValues.OriginalQuestion = answerData.Questions[0];
+                    postedValues.UpdatedQuestion = answerData.Questions[0];
+                    if (Validators.IsValidJSON(answerData.Answer))
+                    {
+                        AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
+                        postedValues.Description = answerModel.Description;
+                        postedValues.Title = answerModel.Title;
+                        postedValues.Subtitle = answerModel.Subtitle;
+                        postedValues.ImageUrl = answerModel.ImageUrl;
+                        postedValues.RedirectionUrl = answerModel.ImageUrl;
+                    }
+                    else
+                    {
+                        postedValues.Description = answerData.Answer;
+                    }
+                }
+
                 var adaptiveCardEditor = MessagingExtensionQnaCard.AddQuestionForm(postedValues, this.appBaseUri);
-                return GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle);
+                return await GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle);
             }
             catch (Exception ex)
             {
@@ -1647,6 +1673,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 if (queryResult.Answers.First().Id != -1)
                 {
                     var answerData = queryResult.Answers.First();
+                    payload.QnaPairId = answerData.Id ?? -1;
+
                     AnswerModel answerModel = new AnswerModel();
 
                     if (Validators.IsValidJSON(answerData.Answer))
@@ -1656,7 +1684,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
                     if (!string.IsNullOrEmpty(answerModel?.Title) || !string.IsNullOrEmpty(answerModel?.Subtitle) || !string.IsNullOrEmpty(answerModel?.ImageUrl) || !string.IsNullOrEmpty(answerModel?.RedirectionUrl))
                     {
-                        await turnContext.SendActivityAsync(MessageFactory.Attachment(MessagingExtensionQnaCard.GetEndUserRichCard(text, answerData))).ConfigureAwait(false);
+                        await turnContext.SendActivityAsync(MessageFactory.Attachment(MessagingExtensionQnaCard.GetEndUserRichCard(text, answerData, payload.QnaPairId))).ConfigureAwait(false);
                     }
                     else
                     {

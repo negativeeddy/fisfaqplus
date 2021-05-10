@@ -36,8 +36,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// This method returns the downloaded knowledgebase documents.
         /// </summary>
         /// <param name="knowledgeBaseId">Knowledgebase Id.</param>
+        /// <param name="isTestKnowledgeBase">Prod or test.</param>
         /// <returns>Json string.</returns>
-        Task<IEnumerable<QnADTO>> DownloadKnowledgebaseAsync(string knowledgeBaseId);
+        Task<IEnumerable<QnADTO>> DownloadKnowledgebaseAsync(string knowledgeBaseId, bool isTestEnvironment = false);
 
         /// <summary>
         /// Get answer from knowledgebase for a given question.

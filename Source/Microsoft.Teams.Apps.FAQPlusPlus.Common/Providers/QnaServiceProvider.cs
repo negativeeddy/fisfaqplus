@@ -8,6 +8,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
     using System.Collections.Generic;
     using System.Globalization;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using System.Web;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
@@ -24,7 +25,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <summary>
         /// Environment type.
         /// </summary>
-        private const string EnvironmentType = "Prod";
+        private const string TestEnvironmentType = "Prod";
+        private const string ProdEnvironmentType = "Test";
 
         private readonly IConfigurationDataProvider configurationProvider;
         private readonly IQnAMakerClient qnaMakerClient;
@@ -227,9 +229,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// </summary>
         /// <param name="knowledgeBaseId">Knowledgebase Id.</param>
         /// <returns>List of question and answer document object.</returns>
-        public async Task<IEnumerable<QnADTO>> DownloadKnowledgebaseAsync(string knowledgeBaseId)
+        public async Task<IEnumerable<QnADTO>> DownloadKnowledgebaseAsync(string knowledgeBaseId, bool isTestEnvironment = false)
         {
-            var qnaDocuments = await this.qnaMakerClient.Knowledgebase.DownloadAsync(knowledgeBaseId, environment: EnvironmentType).ConfigureAwait(false);
+            var qnaDocuments = await this.qnaMakerClient.Knowledgebase.DownloadAsync(
+                knowledgeBaseId, 
+                environment: isTestEnvironment ? TestEnvironmentType : ProdEnvironmentType
+                ).ConfigureAwait(false);
             return qnaDocuments.QnaDocuments;
         }
 
