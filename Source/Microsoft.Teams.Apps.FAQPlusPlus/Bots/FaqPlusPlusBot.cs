@@ -356,7 +356,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 }
 
                 var adaptiveCardEditor = MessagingExtensionQnaCard.AddQuestionForm(postedValues, this.appBaseUri);
-                return await GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle);
+                return await GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle, postedValues.QnaPairId);
             }
             catch (Exception ex)
             {
@@ -586,21 +586,35 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <param name="questionAnswerAdaptiveCardEditor">Card as an input.</param>
         /// <param name="titleText">Gets or sets text that appears below the app name and to the right of the app icon.</param>
         /// <returns>Envelope for Task Module Response.</returns>
-        private static Task<TaskModuleResponse> GetTaskModuleResponseAsync(Attachment questionAnswerAdaptiveCardEditor, string titleText = "")
+        private async Task<TaskModuleResponse> GetTaskModuleResponseAsync(Attachment questionAnswerAdaptiveCardEditor, string titleText = "", int? questionID = null)
         {
-            return Task.FromResult(new TaskModuleResponse
+            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync("EditFormUri");
+
+            var taskModuleInfo = new TaskModuleTaskInfo
+            {
+                Height = TaskModuleHeight,
+                Width = TaskModuleWidth,
+                Title = titleText,
+            };
+
+            // use a rich edit form if available and we know which question it is, otherwise use adaptive card
+            if (string.IsNullOrWhiteSpace(editFormUri) || questionID == null)
+            {
+                taskModuleInfo.Card = questionAnswerAdaptiveCardEditor;
+            }
+            else
+            {
+                Guid randomId = Guid.NewGuid();
+                taskModuleInfo.Url = editFormUri + $"/{questionID}/?rand={randomId}";
+            }
+
+            return new TaskModuleResponse
             {
                 Task = new TaskModuleContinueResponse
                 {
-                    Value = new TaskModuleTaskInfo
-                    {
-                        Card = questionAnswerAdaptiveCardEditor,
-                        Height = TaskModuleHeight,
-                        Width = TaskModuleWidth,
-                        Title = titleText,
-                    },
+                    Value = taskModuleInfo,
                 },
-            });
+            };
         }
 
         /// <summary>
@@ -877,7 +891,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         question.Answer = await this.GenerateAnswer(question.Question);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         question.Answer = "ERROR generating answer";
                     }
