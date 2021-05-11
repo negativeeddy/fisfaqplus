@@ -96,6 +96,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common
         public const string StorageContainer = "faqplus-search-container";
 
         /// <summary>
+        /// FAQ Plus blob storage image container name
+        /// </summary>
+        public const string ImageStorageContainer = "faqplus-image-container";
+
+        /// <summary>
         /// FAQ Plus folder name under FAQ Plus blob storage container name.
         /// </summary>
         public const string BlobFolderName = "faqplus-metadata";
