@@ -68,18 +68,26 @@
             AdaptiveSubmitActionData postedValues = new AdaptiveSubmitActionData();
 
             // if its an existing question, prepopulate the values from the kb
-            if (id > 0)
+            if (id > 0 || !string.IsNullOrEmpty(question))
             {
                 QnADTO answerData = null;
                 try
                 {
                     var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
                     var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
-                    answerData = qnaitems.FirstOrDefault(k => k.Id == id);
+                    if (id > 0)
+                    {
+                        answerData = qnaitems.FirstOrDefault(k => k.Id == id);
+                    }
+                    else
+                    {
+                        answerData = qnaitems.FirstOrDefault(k => k.Questions.Contains(question));
+                        id = answerData.Id.Value;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, $"failed to load qna id {id}");
+                    logger.LogError(ex, $"failed to load qna (id:{id}, question:{question ?? "null"})");
                 }
 
                 if (answerData != null)

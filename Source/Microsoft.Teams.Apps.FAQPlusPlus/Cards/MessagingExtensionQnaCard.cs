@@ -383,6 +383,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Cards
                           ImageUrl = qnaPairEntity.ImageUrl,
                           RedirectionUrl = qnaPairEntity.RedirectionUrl,
                           UpdateHistoryData = actionData,
+                          QnaPairId = qnaPairEntity.QnaPairId,
                       },
                   });
 

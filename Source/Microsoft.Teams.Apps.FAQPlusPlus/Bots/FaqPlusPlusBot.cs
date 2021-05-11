@@ -356,7 +356,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 }
 
                 var adaptiveCardEditor = MessagingExtensionQnaCard.AddQuestionForm(postedValues, this.appBaseUri);
-                return await GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle, postedValues.QnaPairId);
+                return await GetTaskModuleResponseAsync(adaptiveCardEditor, Strings.EditQuestionSubtitle, postedValues.QnaPairId, postedValues.OriginalQuestion);
             }
             catch (Exception ex)
             {
@@ -586,9 +586,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <param name="questionAnswerAdaptiveCardEditor">Card as an input.</param>
         /// <param name="titleText">Gets or sets text that appears below the app name and to the right of the app icon.</param>
         /// <returns>Envelope for Task Module Response.</returns>
-        private async Task<TaskModuleResponse> GetTaskModuleResponseAsync(Attachment questionAnswerAdaptiveCardEditor, string titleText = "", int? questionID = null)
+        private async Task<TaskModuleResponse> GetTaskModuleResponseAsync(Attachment questionAnswerAdaptiveCardEditor, string titleText = "", int? questionID = null, string question = null)
         {
-            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync("EditFormUri");
+            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync(Constants.EditFormUri);
 
             var taskModuleInfo = new TaskModuleTaskInfo
             {
@@ -598,14 +598,19 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             };
 
             // use a rich edit form if available and we know which question it is, otherwise use adaptive card
-            if (string.IsNullOrWhiteSpace(editFormUri) || questionID == null)
+            if (string.IsNullOrWhiteSpace(editFormUri))
             {
                 taskModuleInfo.Card = questionAnswerAdaptiveCardEditor;
             }
-            else
+            else if (questionID.HasValue)
             {
                 Guid randomId = Guid.NewGuid();
                 taskModuleInfo.Url = editFormUri + $"/{questionID}/?rand={randomId}";
+            }
+            else if (!string.IsNullOrWhiteSpace(question))
+            {
+                Guid randomId = Guid.NewGuid();
+                taskModuleInfo.Url = editFormUri + $"/0/?question={Uri.EscapeDataString(question)}&rand={randomId}";
             }
 
             return new TaskModuleResponse
@@ -625,9 +630,10 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <returns>Response of messaging extension action object.</returns>
         private async Task<MessagingExtensionActionResponse> GetMessagingExtensionActionResponseAsync(
             Attachment questionAnswerAdaptiveCardEditor,
-            string titleText = "")
+            string titleText = "",
+            string question = null)
         {
-            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync("EditFormUri");
+            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync(Constants.EditFormUri);
 
             var taskModuleInfo = new TaskModuleTaskInfo
             {
@@ -644,7 +650,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             else
             {
                 Guid randomId = Guid.NewGuid();
-                taskModuleInfo.Url = editFormUri + $"/0/?rand={randomId}";
+                if (question == null)
+                {
+                    taskModuleInfo.Url = editFormUri + $"/0/?rand={randomId}";
+                }
+                else
+                {
+                    taskModuleInfo.Url = editFormUri + $"/0/?rand={randomId}&question={question}";
+                }
             }
 
             return new MessagingExtensionActionResponse

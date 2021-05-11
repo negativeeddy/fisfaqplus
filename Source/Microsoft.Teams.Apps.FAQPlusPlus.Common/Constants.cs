@@ -91,6 +91,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common
         public const string KnowledgeBaseEntityId = "KnowledgeBaseId";
 
         /// <summary>
+        /// Name of the URI where the rich edit form exists
+        /// </summary>
+        public const string EditFormUri = "EditFormUri";
+
+        /// <summary>
         /// FAQ Plus blob storage container name.
         /// </summary>
         public const string StorageContainer = "faqplus-search-container";
