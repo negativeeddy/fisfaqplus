@@ -61,7 +61,7 @@
         public async Task<ActionResult> Edit(int id, string question, string answer)
         {
             var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
-            var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId);
+            var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
 
             var answerData = qnaitems.FirstOrDefault(k => k.Id == id);
 
