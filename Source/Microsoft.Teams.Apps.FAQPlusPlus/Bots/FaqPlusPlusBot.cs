@@ -623,23 +623,37 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <param name="questionAnswerAdaptiveCardEditor">Card as an input.</param>
         /// <param name="titleText">Gets or sets text that appears below the app name and to the right of the app icon.</param>
         /// <returns>Response of messaging extension action object.</returns>
-        private static Task<MessagingExtensionActionResponse> GetMessagingExtensionActionResponseAsync(
+        private async Task<MessagingExtensionActionResponse> GetMessagingExtensionActionResponseAsync(
             Attachment questionAnswerAdaptiveCardEditor,
             string titleText = "")
         {
-            return Task.FromResult(new MessagingExtensionActionResponse
+            string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync("EditFormUri");
+
+            var taskModuleInfo = new TaskModuleTaskInfo
+            {
+                Height = TaskModuleHeight,
+                Width = TaskModuleWidth,
+                Title = titleText,
+            };
+
+            // use a rich edit form if available and we know which question it is, otherwise use adaptive card
+            if (string.IsNullOrWhiteSpace(editFormUri))
+            {
+                taskModuleInfo.Card = questionAnswerAdaptiveCardEditor;
+            }
+            else
+            {
+                Guid randomId = Guid.NewGuid();
+                taskModuleInfo.Url = editFormUri + $"/0/?rand={randomId}";
+            }
+
+            return new MessagingExtensionActionResponse
             {
                 Task = new TaskModuleContinueResponse
                 {
-                    Value = new TaskModuleTaskInfo
-                    {
-                        Card = questionAnswerAdaptiveCardEditor,
-                        Height = TaskModuleHeight,
-                        Width = TaskModuleWidth,
-                        Title = titleText,
-                    },
+                    Value = taskModuleInfo,
                 },
-            });
+            };
         }
 
         /// <summary>

@@ -6,6 +6,8 @@
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
+    using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
@@ -22,6 +24,7 @@
         private readonly IConfigurationDataProvider configurationProvider;
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IImageStorageProvider imageStorageProvider;
+        private readonly ILogger<QuestionController> logger;
         private readonly BotSettings options;
         private readonly string appId;
 
@@ -32,11 +35,12 @@
         /// <param name="qnaServiceProvider"></param>
         /// <param name="imageStorageProvider"></param>
         /// <param name="optionsAccessor"></param>
-        public QuestionController(IConfigurationDataProvider configurationProvider, IQnaServiceProvider qnaServiceProvider, IImageStorageProvider imageStorageProvider, IOptionsMonitor<BotSettings> optionsAccessor)
+        public QuestionController(IConfigurationDataProvider configurationProvider, IQnaServiceProvider qnaServiceProvider, IImageStorageProvider imageStorageProvider, IOptionsMonitor<BotSettings> optionsAccessor, ILogger<QuestionController> logger)
         {
             this.configurationProvider = configurationProvider;
             this.qnaServiceProvider = qnaServiceProvider;
             this.imageStorageProvider = imageStorageProvider;
+            this.logger = logger;
 
             this.options = optionsAccessor.CurrentValue;
             this.appId = this.options.MicrosoftAppId;
@@ -60,36 +64,48 @@
         [Route("/question/edit/{id}")]
         public async Task<ActionResult> Edit(int id, string question, string answer)
         {
-            var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
-            var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
-
-            var answerData = qnaitems.FirstOrDefault(k => k.Id == id);
-
             var qnaModel = new QnAQuestionModel();
             AdaptiveSubmitActionData postedValues = new AdaptiveSubmitActionData();
 
-            if (answerData != null)
+            // if its an existing question, prepopulate the values from the kb
+            if (id > 0)
             {
-                postedValues.QnaPairId = id;
-                postedValues.OriginalQuestion = answerData.Questions[0];
-                postedValues.UpdatedQuestion = answerData.Questions[0];
-
-                if (Validators.IsValidJSON(answerData.Answer))
+                QnADTO answerData = null;
+                try
                 {
-                    AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
-                    postedValues.Description = answerModel.Description;
-                    postedValues.Title = answerModel.Title;
-                    postedValues.Subtitle = answerModel.Subtitle;
-                    postedValues.ImageUrl = answerModel.ImageUrl;
-                    postedValues.RedirectionUrl = answerModel.RedirectionUrl;
+                    var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
+                    var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
+                    answerData = qnaitems.FirstOrDefault(k => k.Id == id);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, $"failed to load qna id {id}");
+                }
+
+                if (answerData != null)
+                {
+                    postedValues.QnaPairId = id;
+                    postedValues.OriginalQuestion = answerData.Questions[0];
+                    postedValues.UpdatedQuestion = answerData.Questions[0];
+
+                    if (Validators.IsValidJSON(answerData.Answer))
+                    {
+                        AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
+                        postedValues.Description = answerModel.Description;
+                        postedValues.Title = answerModel.Title;
+                        postedValues.Subtitle = answerModel.Subtitle;
+                        postedValues.ImageUrl = answerModel.ImageUrl;
+                        postedValues.RedirectionUrl = answerModel.RedirectionUrl;
+                    }
+                    else
+                    {
+                        postedValues.Description = answerData.Answer;
+                    }
                 }
                 else
                 {
-                    postedValues.Description = answerData.Answer;
+                    postedValues.Description = "ERROR: QnA Pair Not Found";
                 }
-            } else
-            {
-                postedValues.Description = "ERROR: QnA Pair Not Found";
             }
 
             qnaModel.PostedValues = postedValues;
@@ -135,7 +151,7 @@
             Console.WriteLine(collection.Count);
             if (collection.Files.Count > 0)
             {
-                if(collection.Files[0] != null)
+                if (collection.Files[0] != null)
                 {
                     var file = collection.Files[0];
 
@@ -162,7 +178,7 @@
             }
 
             // CKEDitor requires image url to be passed in JSON
-            return Json(new { Url = url }); 
+            return Json(new { Url = url });
         }
 
         /// <summary>
