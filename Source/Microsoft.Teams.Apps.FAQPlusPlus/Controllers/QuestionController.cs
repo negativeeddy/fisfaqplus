@@ -6,8 +6,6 @@
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
-    using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
@@ -24,7 +22,6 @@
         private readonly IConfigurationDataProvider configurationProvider;
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IImageStorageProvider imageStorageProvider;
-        private readonly ILogger<QuestionController> logger;
         private readonly BotSettings options;
         private readonly string appId;
 
@@ -35,12 +32,11 @@
         /// <param name="qnaServiceProvider"></param>
         /// <param name="imageStorageProvider"></param>
         /// <param name="optionsAccessor"></param>
-        public QuestionController(IConfigurationDataProvider configurationProvider, IQnaServiceProvider qnaServiceProvider, IImageStorageProvider imageStorageProvider, IOptionsMonitor<BotSettings> optionsAccessor, ILogger<QuestionController> logger)
+        public QuestionController(IConfigurationDataProvider configurationProvider, IQnaServiceProvider qnaServiceProvider, IImageStorageProvider imageStorageProvider, IOptionsMonitor<BotSettings> optionsAccessor)
         {
             this.configurationProvider = configurationProvider;
             this.qnaServiceProvider = qnaServiceProvider;
             this.imageStorageProvider = imageStorageProvider;
-            this.logger = logger;
 
             this.options = optionsAccessor.CurrentValue;
             this.appId = this.options.MicrosoftAppId;
@@ -64,48 +60,42 @@
         [Route("/question/edit/{id}")]
         public async Task<ActionResult> Edit(int id, string question, string answer)
         {
+            var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
+            var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId);
+
+            var answerData = qnaitems.FirstOrDefault(k => k.Id == id);
+
             var qnaModel = new QnAQuestionModel();
             AdaptiveSubmitActionData postedValues = new AdaptiveSubmitActionData();
 
-            // if its an existing question, prepopulate the values from the kb
-            if (id > 0)
+            if (answerData != null)
             {
-                QnADTO answerData = null;
-                try
-                {
-                    var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
-                    var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId, true);
-                    answerData = qnaitems.FirstOrDefault(k => k.Id == id);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"failed to load qna id {id}");
-                }
+                postedValues.QnaPairId = id;
+                postedValues.OriginalQuestion = answerData.Questions[0];
+                postedValues.UpdatedQuestion = answerData.Questions[0];
 
-                if (answerData != null)
+                if (Validators.IsValidJSON(answerData.Answer))
                 {
-                    postedValues.QnaPairId = id;
-                    postedValues.OriginalQuestion = answerData.Questions[0];
-                    postedValues.UpdatedQuestion = answerData.Questions[0];
-
-                    if (Validators.IsValidJSON(answerData.Answer))
-                    {
-                        AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
-                        postedValues.Description = answerModel.Description;
-                        postedValues.Title = answerModel.Title;
-                        postedValues.Subtitle = answerModel.Subtitle;
-                        postedValues.ImageUrl = answerModel.ImageUrl;
-                        postedValues.RedirectionUrl = answerModel.RedirectionUrl;
-                    }
-                    else
-                    {
-                        postedValues.Description = answerData.Answer;
-                    }
+                    AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
+                    postedValues.Description = answerModel.Description;
+                    postedValues.Title = answerModel.Title;
+                    postedValues.Subtitle = answerModel.Subtitle;
+                    postedValues.ImageUrl = answerModel.ImageUrl;
+                    postedValues.RedirectionUrl = answerModel.RedirectionUrl;
                 }
                 else
                 {
-                    postedValues.Description = "ERROR: QnA Pair Not Found";
+                    postedValues.Description = answerData.Answer;
+                    //postedValues.ImageUrl = "https://3uc74q2sbxzd4.blob.core.windows.net/faqplus-image-container/20210513080531_Feb1_Byron_03.jpg";
+                    if (!String.IsNullOrEmpty(postedValues.ImageUrl))
+                    {
+                        qnaModel.ImageMd = $"![]({postedValues.ImageUrl})";
+                    }
                 }
+            }
+            else
+            {
+                postedValues.Description = "ERROR: QnA Pair Not Found";
             }
 
             qnaModel.PostedValues = postedValues;
@@ -135,6 +125,14 @@
             }
         }
 
+        [Route("/question/image/{imageName}")]
+        [HttpGet]
+        public async Task<ActionResult> GetImage(string imageName)
+        {
+            var image = await this.imageStorageProvider.GetAsync(imageName);
+            return File(image, "application/octet-stream", imageName);
+        }
+
         /// <summary>
         /// Upload Image To Blob Storage
         /// </summary>
@@ -145,8 +143,8 @@
         public async Task<ActionResult> Upload(IFormCollection collection)
         {
 
-            string url = String.Empty;
-            string fileName = String.Empty;
+            string url = string.Empty;
+            string fileName = string.Empty;
 
             Console.WriteLine(collection.Count);
             if (collection.Files.Count > 0)
@@ -163,14 +161,17 @@
                             {
                                 // Get the reference to the block blob from the container
                                 string orginalFileName = file.FileName;
+                                string filenamePrefix = DateTime.Now.ToString("yyyyMMddHHmmss"); // Makes filename unique
+                                string newFileName = $"{filenamePrefix}_{orginalFileName}";
+
                                 if (file.FileName.LastIndexOf("\\") > -1)
                                 {
                                     orginalFileName = file.FileName.Substring(file.FileName.LastIndexOf("\\") + 1,
                                     file.FileName.Length - file.FileName.LastIndexOf("\\") - 1);
                                 }
 
-                                string filenamePrefix = DateTime.Now.ToString("yyyyMMddHHmmss"); // Makes filename unique
-                                url = await this.imageStorageProvider.UploadAsync(stream, $"{filenamePrefix}_{orginalFileName}");
+                                var storageUrl = await this.imageStorageProvider.UploadAsync(stream, newFileName);
+                                url = $"{this.Request.Scheme}://{this.Request.Host}/question/image/{newFileName}";
                             }
                         }
                     }
@@ -180,6 +181,8 @@
             // CKEDitor requires image url to be passed in JSON
             return Json(new { Url = url });
         }
+
+
 
         /// <summary>
         /// Checks to see if image is one of allowable types

@@ -54,6 +54,30 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
             return blockBlob.Uri.ToString();
         }
 
+        public async Task<byte[]> GetAsync(string fileName)
+        {
+            // Retrieve storage account from connection string.
+            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(this.storageConnectionString);
+
+            // Create the blob client.
+            CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+
+            // Retrieve a reference to a container.
+            // Container: faqplus-image-container (change in Constants if desired)
+            CloudBlobContainer container = blobClient.GetContainerReference(Constants.ImageStorageContainer);
+
+
+            CloudBlockBlob blockBlob = container.GetBlockBlobReference(fileName);
+            await blockBlob.FetchAttributesAsync();
+            var stream = new MemoryStream();
+            var bytes = new byte[blockBlob.Properties.Length];
+            await blockBlob.DownloadToStreamAsync(stream);
+            await blockBlob.DownloadToByteArrayAsync(bytes, 0);
+
+            return bytes;
+
+        }
+
 
     }
 }

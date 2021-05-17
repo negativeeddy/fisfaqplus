@@ -5,6 +5,8 @@
 
     public interface IImageStorageProvider
     {
+        Task<byte[]> GetAsync(string fileName);
+
         Task<string> UploadAsync(Stream stream, string fileName);
     }
 }
