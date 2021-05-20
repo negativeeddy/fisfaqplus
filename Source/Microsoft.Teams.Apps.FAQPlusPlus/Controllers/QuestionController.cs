@@ -86,16 +86,11 @@
                 else
                 {
                     postedValues.Description = answerData.Answer;
-                    //postedValues.ImageUrl = "https://3uc74q2sbxzd4.blob.core.windows.net/faqplus-image-container/20210513080531_Feb1_Byron_03.jpg";
                     if (!String.IsNullOrEmpty(postedValues.ImageUrl))
                     {
                         qnaModel.ImageMd = $"![]({postedValues.ImageUrl})";
                     }
                 }
-            }
-            else
-            {
-                postedValues.Description = "ERROR: QnA Pair Not Found";
             }
 
             qnaModel.PostedValues = postedValues;
