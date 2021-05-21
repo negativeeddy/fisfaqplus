@@ -1,5 +1,5 @@
 ﻿@model Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.QnAQuestionModel;
-
+@inject Microsoft.Extensions.Configuration.IConfiguration config
 @{
     Layout = null;
 }
@@ -133,7 +133,7 @@
             }
             console.log(postedValues);
 
-            microsoftTeams.tasks.submitTask(postedValues, "165dc594-e36a-488f-a8ba-20fcebacad86");
+            microsoftTeams.tasks.submitTask(postedValues, "@config["TeamsAppId"]");
 
         return true;
     }
