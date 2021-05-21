@@ -60,42 +60,45 @@
         [Route("/question/edit/{id}")]
         public async Task<ActionResult> Edit(int id, string question, string answer)
         {
-            var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
-            var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId);
-
-            var answerData = qnaitems.FirstOrDefault(k => k.Id == id);
-
             var qnaModel = new QnAQuestionModel();
             AdaptiveSubmitActionData postedValues = new AdaptiveSubmitActionData();
 
-            if (answerData != null)
+            if (id > 0)
             {
-                postedValues.QnaPairId = id;
-                postedValues.OriginalQuestion = answerData.Questions[0];
-                postedValues.UpdatedQuestion = answerData.Questions[0];
+                var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
+                var qnaitems = await this.qnaServiceProvider.DownloadKnowledgebaseAsync(knowledgeBaseId);
 
-                if (Validators.IsValidJSON(answerData.Answer))
+                var answerData = qnaitems.FirstOrDefault(k => k.Id == id);
+
+                if (answerData != null)
                 {
-                    AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
-                    postedValues.Description = answerModel.Description;
-                    postedValues.Title = answerModel.Title;
-                    postedValues.Subtitle = answerModel.Subtitle;
-                    postedValues.ImageUrl = answerModel.ImageUrl;
-                    postedValues.RedirectionUrl = answerModel.RedirectionUrl;
+                    postedValues.QnaPairId = id;
+                    postedValues.OriginalQuestion = answerData.Questions[0];
+                    postedValues.UpdatedQuestion = answerData.Questions[0];
+
+                    if (Validators.IsValidJSON(answerData.Answer))
+                    {
+                        AnswerModel answerModel = JsonConvert.DeserializeObject<AnswerModel>(answerData.Answer);
+                        postedValues.Description = answerModel.Description;
+                        postedValues.Title = answerModel.Title;
+                        postedValues.Subtitle = answerModel.Subtitle;
+                        postedValues.ImageUrl = answerModel.ImageUrl;
+                        postedValues.RedirectionUrl = answerModel.RedirectionUrl;
+                    }
+                    else
+                    {
+                        postedValues.Description = answerData.Answer;
+                        //postedValues.ImageUrl = "https://3uc74q2sbxzd4.blob.core.windows.net/faqplus-image-container/20210513080531_Feb1_Byron_03.jpg";
+                        if (!String.IsNullOrEmpty(postedValues.ImageUrl))
+                        {
+                            qnaModel.ImageMd = $"![]({postedValues.ImageUrl})";
+                        }
+                    }
                 }
                 else
                 {
-                    postedValues.Description = answerData.Answer;
-                    //postedValues.ImageUrl = "https://3uc74q2sbxzd4.blob.core.windows.net/faqplus-image-container/20210513080531_Feb1_Byron_03.jpg";
-                    if (!String.IsNullOrEmpty(postedValues.ImageUrl))
-                    {
-                        qnaModel.ImageMd = $"![]({postedValues.ImageUrl})";
-                    }
+                    postedValues.Description = "ERROR: QnA Pair Not Found";
                 }
-            }
-            else
-            {
-                postedValues.Description = "ERROR: QnA Pair Not Found";
             }
 
             qnaModel.PostedValues = postedValues;
