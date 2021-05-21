@@ -121,6 +121,8 @@
             imageUrl = imageUrl.slice(0, -1)
 
             var postedValues = {
+                OriginalQuestion: "@Model.PostedValues.OriginalQuestion",
+                UpdatedQuestion: document.forms["questionForm"]["PostedValues.OriginalQuestion"].value,
                 Id: document.forms["questionForm"]["PostedValues.QnaPairId"].value,
                 Description: editor.getData(),
                 Title: document.forms["questionForm"]["PostedValues.Title"] != undefined ? document.forms["questionForm"]["PostedValues.Title"].value : null,
