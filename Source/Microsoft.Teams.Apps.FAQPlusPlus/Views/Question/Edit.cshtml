@@ -121,6 +121,8 @@
             imageUrl = imageUrl.slice(0, -1)
 
             var postedValues = {
+                OriginalQuestion: "@Model.PostedValues.OriginalQuestion",
+                UpdatedQuestion: document.forms["questionForm"]["PostedValues.OriginalQuestion"].value,
                 Id: document.forms["questionForm"]["PostedValues.QnaPairId"].value,
                 Description: editor.getData(),
                 Title: document.forms["questionForm"]["PostedValues.Title"] != undefined ? document.forms["questionForm"]["PostedValues.Title"].value : null,
@@ -131,7 +133,7 @@
             }
             console.log(postedValues);
 
-            microsoftTeams.tasks.submitTask(postedValues, "165dc594-e36a-488f-a8ba-20fcebacad86");
+            microsoftTeams.tasks.submitTask(postedValues, "1e43d143-3fb1-4e1e-909c-5d6aaf106f3e");
 
         return true;
     }
