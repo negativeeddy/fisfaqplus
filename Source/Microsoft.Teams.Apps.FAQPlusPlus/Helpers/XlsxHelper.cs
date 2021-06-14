@@ -97,9 +97,32 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 Worksheet worksheet = worksheetPart.Worksheet;
 
                 //AT
+
+                Columns lstColumns = worksheetPart.Worksheet.GetFirstChild<Columns>();
+                bool needToInsertColumns = false;
+                if (lstColumns == null)
+                {
+                    lstColumns = new Columns();
+                    needToInsertColumns = true;
+                }
+                // Min = 1, Max = 1 ==> Apply this to column 1 (A)
+                // Min = 2, Max = 2 ==> Apply this to column 2 (B)
+                // Width = 25 ==> Set the width to 25
+                // CustomWidth = true ==> Tell Excel to use the custom width
+                lstColumns.Append(new Column() { Min = 1, Max = 1, Width = 25, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 2, Max = 2, Width = 70, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 3, Max = 3, Width = 10, CustomWidth = true });
+
+                // Only insert the columns if we had to create a new columns element
+                if (needToInsertColumns)
+                {
+                    _ = worksheetPart.Worksheet.InsertAt(lstColumns, 0);
+                }
+
                 WorkbookStylesPart workStylePart = workbookpart.AddNewPart<WorkbookStylesPart>();
                 workStylePart.Stylesheet = CreateStylesheet();
                 workStylePart.Stylesheet.Save();
+
                 //AT
 
                 var sharedStringPart = workbookpart.AddNewPart<SharedStringTablePart>();
@@ -168,11 +191,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 );
 
             styleSheet = new Stylesheet(fonts, fills, borders, cellFormats);
-
-            //CellFormats cellFormats = new CellFormats(
-            //        new CellFormat(), // default
-            //        new CellFormat(new Alignment() { WrapText = true })
-            //    );
 
             return styleSheet;
         }
