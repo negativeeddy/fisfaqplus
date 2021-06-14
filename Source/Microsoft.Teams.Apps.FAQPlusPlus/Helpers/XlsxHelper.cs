@@ -92,10 +92,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 // Add a WorkbookPart to the document.
                 var workbookpart = spreadSheet.AddWorkbookPart();
                 workbookpart.Workbook = new Workbook();
-                WorkbookStylesPart wbsp = CreateStylesheet(workbookpart.WorkbookStylesPart);
 
                 var worksheetPart = InsertWorksheet(workbookpart);
                 Worksheet worksheet = worksheetPart.Worksheet;
+
+                //AT
+                WorkbookStylesPart workStylePart = workbookpart.AddNewPart<WorkbookStylesPart>();
+                workStylePart.Stylesheet = CreateStylesheet();
+                workStylePart.Stylesheet.Save();
+                //AT
 
                 var sharedStringPart = workbookpart.AddNewPart<SharedStringTablePart>();
 
@@ -118,72 +123,58 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                     SetCelText(worksheet, "C", (uint)i + 2, questions[i].Metadata, sharedStringTable);
                 }
 
-                List<WorksheetPart> worksheetPartList = workbookpart.WorksheetParts.ToList();
-                foreach (var wsp in worksheetPartList)
-                {
-                    // find sheet data
-                    IEnumerable<SheetData> sheetData = wsp.Worksheet.Elements<SheetData>();
-
-                    // Iterate through every sheet inside Excel sheet
-                    foreach (var sd in sheetData)
-                    {
-                        IEnumerable<Row> row = sd.Elements<Row>();
-                        int rowindex = 1;
-                        foreach (Row currentrow in row)
-                        {
-                            foreach (Cell cell in currentrow.Descendants<Cell>())
-                            {
-                                // Doing Wordwrap in the cell using openxml - in open xml we need to do cell level word wrap
-                                cell.StyleIndex = Convert.ToUInt32(1);
-                            }
-
-                            if (rowindex > 1)
-                            {
-                                currentrow.Height = currentrow.Height + 5;
-                                currentrow.CustomHeight = true;
-                            }
-
-                            rowindex++;
-                        }
-                    }
-
-                    wsp.Worksheet.Save();
-                }
-
                 // Save the new worksheet.
                 worksheetPart.Worksheet.Save();
             }
         }
 
-        private static WorkbookStylesPart CreateStylesheet(WorkbookStylesPart spreadsheet)
+        private static Stylesheet CreateStylesheet()
         {
-            WorkbookStylesPart stylesheet = spreadsheet;
-            Stylesheet workbookstylesheet = new Stylesheet();
+            Stylesheet styleSheet = null;
 
-            // <CellFormats>
-            CellFormat cellformat = new CellFormat(new Alignment() { WrapText = true });
+            Fonts fonts = new Fonts(
+                new Font( // Index 0 - default
+                    new FontSize() { Val = 10 }
 
-            // Style with textwrap set
-            Fills fills = new ();
-            Fill fill = new ();
-            PatternFill patternFill = new ()
-            {
-                PatternType = PatternValues.None,
-            };
-            fill.PatternFill = patternFill;
-            fills.Append(fill);
+                ),
+                new Font( // Index 1 - header
+                    new FontSize() { Val = 10 },
+                    new Bold(),
+                    new Color() { Rgb = "FFFFFF" }
 
-            // <APPENDING CellFormats>
-            CellFormats cellformats = new ();
-            cellformats.Append(cellformat);
+                ));
 
-            workbookstylesheet.Append(fills);
-            workbookstylesheet.Append(cellformats);
+            Fills fills = new Fills(
+                    new Fill(new PatternFill() { PatternType = PatternValues.None }), // Index 0 - default
+                    new Fill(new PatternFill() { PatternType = PatternValues.Gray125 }), // Index 1 - default
+                    new Fill(new PatternFill(new ForegroundColor { Rgb = new HexBinaryValue() { Value = "66666666" } })
+                    { PatternType = PatternValues.Solid }) // Index 2 - header
+                );
 
-            stylesheet.Stylesheet = workbookstylesheet;
-            stylesheet.Stylesheet.Save();
+            Borders borders = new Borders(
+                    new Border(), // index 0 default
+                    new Border( // index 1 black border
+                        new LeftBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new RightBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new TopBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new BottomBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new DiagonalBorder())
+                );
 
-            return stylesheet;
+            Alignment alignment = new Alignment() { WrapText = true };
+            CellFormats cellFormats = new CellFormats(
+                    new CellFormat(), // default
+                    new CellFormat { FontId = 0, FillId = 0, BorderId = 1, Alignment = alignment, ApplyBorder = true, ApplyAlignment = true }
+                );
+
+            styleSheet = new Stylesheet(fonts, fills, borders, cellFormats);
+
+            //CellFormats cellFormats = new CellFormats(
+            //        new CellFormat(), // default
+            //        new CellFormat(new Alignment() { WrapText = true })
+            //    );
+
+            return styleSheet;
         }
 
         private static WorksheetPart InsertWorksheet(WorkbookPart workbookPart)
@@ -309,7 +300,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                     }
                 }
 
-                Cell newCell = new Cell() { CellReference = cellReference };
+                Cell newCell = new Cell() { CellReference = cellReference, StyleIndex = 1 };
                 row.InsertBefore(newCell, refCell);
 
                 worksheet.Save();
