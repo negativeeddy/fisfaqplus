@@ -92,6 +92,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 // Add a WorkbookPart to the document.
                 var workbookpart = spreadSheet.AddWorkbookPart();
                 workbookpart.Workbook = new Workbook();
+                WorkbookStylesPart wbsp = CreateStylesheet(workbookpart.WorkbookStylesPart);
 
                 var worksheetPart = InsertWorksheet(workbookpart);
                 Worksheet worksheet = worksheetPart.Worksheet;
@@ -117,9 +118,72 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                     SetCelText(worksheet, "C", (uint)i + 2, questions[i].Metadata, sharedStringTable);
                 }
 
+                List<WorksheetPart> worksheetPartList = workbookpart.WorksheetParts.ToList();
+                foreach (var wsp in worksheetPartList)
+                {
+                    // find sheet data
+                    IEnumerable<SheetData> sheetData = wsp.Worksheet.Elements<SheetData>();
+
+                    // Iterate through every sheet inside Excel sheet
+                    foreach (var sd in sheetData)
+                    {
+                        IEnumerable<Row> row = sd.Elements<Row>();
+                        int rowindex = 1;
+                        foreach (Row currentrow in row)
+                        {
+                            foreach (Cell cell in currentrow.Descendants<Cell>())
+                            {
+                                // Doing Wordwrap in the cell using openxml - in open xml we need to do cell level word wrap
+                                cell.StyleIndex = Convert.ToUInt32(1);
+                            }
+
+                            if (rowindex > 1)
+                            {
+                                currentrow.Height = currentrow.Height + 5;
+                                currentrow.CustomHeight = true;
+                            }
+
+                            rowindex++;
+                        }
+                    }
+
+                    wsp.Worksheet.Save();
+                }
+
                 // Save the new worksheet.
                 worksheetPart.Worksheet.Save();
             }
+        }
+
+        private static WorkbookStylesPart CreateStylesheet(WorkbookStylesPart spreadsheet)
+        {
+            WorkbookStylesPart stylesheet = spreadsheet;
+            Stylesheet workbookstylesheet = new Stylesheet();
+
+            // <CellFormats>
+            CellFormat cellformat = new CellFormat(new Alignment() { WrapText = true });
+
+            // Style with textwrap set
+            Fills fills = new ();
+            Fill fill = new ();
+            PatternFill patternFill = new ()
+            {
+                PatternType = PatternValues.None,
+            };
+            fill.PatternFill = patternFill;
+            fills.Append(fill);
+
+            // <APPENDING CellFormats>
+            CellFormats cellformats = new ();
+            cellformats.Append(cellformat);
+
+            workbookstylesheet.Append(fills);
+            workbookstylesheet.Append(cellformats);
+
+            stylesheet.Stylesheet = workbookstylesheet;
+            stylesheet.Stylesheet.Save();
+
+            return stylesheet;
         }
 
         private static WorksheetPart InsertWorksheet(WorkbookPart workbookPart)
