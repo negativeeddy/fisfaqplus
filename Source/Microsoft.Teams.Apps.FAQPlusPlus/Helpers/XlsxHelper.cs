@@ -109,9 +109,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 // Min = 2, Max = 2 ==> Apply this to column 2 (B)
                 // Width = 25 ==> Set the width to 25
                 // CustomWidth = true ==> Tell Excel to use the custom width
-                lstColumns.Append(new Column() { Min = 1, Max = 1, Width = 25, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 1, Max = 1, Width = 70, CustomWidth = true });
                 lstColumns.Append(new Column() { Min = 2, Max = 2, Width = 70, CustomWidth = true });
-                lstColumns.Append(new Column() { Min = 3, Max = 3, Width = 10, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 3, Max = 3, Width = 25, CustomWidth = true });
 
                 // Only insert the columns if we had to create a new columns element
                 if (needToInsertColumns)
