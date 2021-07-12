@@ -20,6 +20,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
     using Microsoft.Teams.Apps.FAQPlusPlus.Bots;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers;
+    using Microsoft.Teams.Apps.FAQPlusPlus.Helpers;
 
     /// <summary>
     /// This a Startup class for this Bot.
@@ -125,12 +126,22 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 
             services.AddSingleton<ISearchService, SearchService>();
             services.AddSingleton<IMemoryCache, MemoryCache>();
-            services.AddTransient(sp => (BotFrameworkAdapter)sp.GetRequiredService<IBotFrameworkHttpAdapter>());
+            // services.AddTransient(sp => (BotFrameworkAdapter)sp.GetRequiredService<IBotFrameworkHttpAdapter>());
+            services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddTransient<IBot, FaqPlusPlusBot>();
 
             // Create the telemetry middleware(used by the telemetry initializer) to track conversation events
             services.AddSingleton<TelemetryLoggerMiddleware>();
             services.AddMemoryCache();
+
+            // Create the User state. (Used to store the user's language preference.)
+            services.AddSingleton<UserState>();
+
+            // Create the Microsoft Translator responsible for making calls to the Cognitive Services translation service
+            services.AddSingleton<Translator>();
+
+            // Create the Translation Middleware that will be added to the middleware pipeline in the AdapterWithErrorHandler
+            services.AddSingleton<TranslationMiddleware>();
         }
     }
 }
