@@ -135,6 +135,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             services.AddSingleton<TelemetryLoggerMiddleware>();
             services.AddMemoryCache();
 
+            // Create the storage we'll be using for User and Conversation state. (Memory is great for testing purposes.)
+            services.AddSingleton<IStorage, MemoryStorage>();
+
             // Create the User state. (Used to store the user's language preference.)
             services.AddSingleton<UserState>();
 
