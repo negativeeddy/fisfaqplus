@@ -128,7 +128,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 
             services.AddSingleton<ISearchService, SearchService>();
             services.AddSingleton<IMemoryCache, MemoryCache>();
-            // services.AddTransient(sp => (BotFrameworkAdapter)sp.GetRequiredService<IBotFrameworkHttpAdapter>());
+            services.AddTransient(sp => (BotFrameworkAdapter)sp.GetRequiredService<IBotFrameworkHttpAdapter>());
             services.AddTransient<IBot, FaqPlusPlusBot>();
 
             // Create the telemetry middleware(used by the telemetry initializer) to track conversation events
