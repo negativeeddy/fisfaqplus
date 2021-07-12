@@ -15,16 +15,20 @@
     public class TranslationMiddleware : IMiddleware
     {
         private readonly Translator translator;
+        private readonly TranslationSettings translatorSettings;
+
         private readonly IStatePropertyAccessor<string> languageStateProperty;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TranslationMiddleware"/> class.
         /// </summary>
         /// <param name="translator">Translator implementation to be used for text translation.</param>
+        /// <param name="translatorSettings">Default Language Settings</param>
         /// <param name="userState">User Parameter</param>
-        public TranslationMiddleware(Translator translator, UserState userState)
+        public TranslationMiddleware(Translator translator, TranslationSettings translatorSettings, UserState userState)
         {
             this.translator = translator ?? throw new ArgumentNullException(nameof(translator));
+            this.translatorSettings = translatorSettings ?? throw new ArgumentNullException(nameof(translatorSettings));
             if (userState == null)
             {
                 throw new ArgumentNullException(nameof(userState));
@@ -42,6 +46,8 @@
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
         public async Task OnTurnAsync(ITurnContext turnContext, NextDelegate next, CancellationToken cancellationToken = default(CancellationToken))
         {
+            var defaultLanguage = this.translatorSettings.DefaultLanguage;
+
             if (turnContext == null)
             {
                 throw new ArgumentNullException(nameof(turnContext));
@@ -53,14 +59,14 @@
             {
                 if (turnContext.Activity.Type == ActivityTypes.Message)
                 {
-                    turnContext.Activity.Text = await this.translator.TranslateAsync(turnContext.Activity.Text, TranslationSettings.DefaultLanguage, cancellationToken);
+                    turnContext.Activity.Text = await this.translator.TranslateAsync(turnContext.Activity.Text, defaultLanguage, cancellationToken);
                 }
             }
 
             turnContext.OnSendActivities(async (newContext, activities, nextSend) =>
             {
-                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => TranslationSettings.DefaultLanguage) ?? TranslationSettings.DefaultLanguage;
-                bool shouldTranslate = userLanguage != TranslationSettings.DefaultLanguage;
+                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
+                bool shouldTranslate = userLanguage != defaultLanguage;
 
                 // Translate messages sent to the user to user language
                 if (shouldTranslate)
@@ -82,8 +88,8 @@
 
             turnContext.OnUpdateActivity(async (newContext, activity, nextUpdate) =>
             {
-                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => TranslationSettings.DefaultLanguage) ?? TranslationSettings.DefaultLanguage;
-                bool shouldTranslate = userLanguage != TranslationSettings.DefaultLanguage;
+                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
+                bool shouldTranslate = userLanguage != defaultLanguage;
 
                 // Translate messages sent to the user to user language
                 if (activity.Type == ActivityTypes.Message)
@@ -110,8 +116,10 @@
 
         private async Task<bool> ShouldTranslateAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
         {
-            string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => TranslationSettings.DefaultLanguage, cancellationToken) ?? TranslationSettings.DefaultLanguage;
-            return userLanguage != TranslationSettings.DefaultLanguage;
+            var defaultLanguage = this.translatorSettings.DefaultLanguage;
+
+            string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage, cancellationToken) ?? defaultLanguage;
+            return userLanguage != defaultLanguage;
         }
     }
 }
