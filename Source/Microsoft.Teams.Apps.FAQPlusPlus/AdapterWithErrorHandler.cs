@@ -14,7 +14,7 @@
 
     public class AdapterWithErrorHandler : BotFrameworkHttpAdapter
     {
-        /// <summary>
+        /// <summary> 
         /// Initializes a new instance of the <see cref="AdapterWithErrorHandler"/> class.
         /// </summary>
         /// <param name="configuration">Configuration</param>
@@ -24,7 +24,9 @@
         /// <param name="translationMiddleware">Middleware</param>
         /// <param name="conversationState">conversationState</param>
         public AdapterWithErrorHandler(IConfiguration configuration, ICredentialProvider credentialProvider, HttpClient httpClient, ILogger<IBotFrameworkHttpAdapter> logger, TranslationMiddleware translationMiddleware, ConversationState conversationState = default)
-            : base(configuration, credentialProvider, null, null, null, httpClient, translationMiddleware, logger)
+            : base(configuration, credentialProvider, null, null, null, null, translationMiddleware, logger)
+        //public AdapterWithErrorHandler(ICredentialProvider credentialProvider, ILogger<BotFrameworkHttpAdapter> logger, ConversationState conversationState = null)
+        //        : base(credentialProvider)
         {
             if (translationMiddleware == null)
             {

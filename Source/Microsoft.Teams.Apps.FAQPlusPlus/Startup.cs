@@ -107,7 +107,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             services.AddHttpClient();
             services.AddSingleton<ICredentialProvider, ConfigurationCredentialProvider>();
             services.AddSingleton<ITicketsProvider>(new TicketsProvider(this.Configuration["StorageConnectionString"]));
-            services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
+            // services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
+            services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddSingleton(new MicrosoftAppCredentials(this.Configuration["MicrosoftAppId"], this.Configuration["MicrosoftAppPassword"]));
 
             IQnAMakerClient qnaMakerClient = new QnAMakerClient(
@@ -127,7 +128,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             services.AddSingleton<ISearchService, SearchService>();
             services.AddSingleton<IMemoryCache, MemoryCache>();
             // services.AddTransient(sp => (BotFrameworkAdapter)sp.GetRequiredService<IBotFrameworkHttpAdapter>());
-            services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddTransient<IBot, FaqPlusPlusBot>();
 
             // Create the telemetry middleware(used by the telemetry initializer) to track conversation events
