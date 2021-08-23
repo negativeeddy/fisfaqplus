@@ -51,12 +51,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
         /// <returns>Boolean value where true represent html tags are present while false represent html tags are not present.</returns>
         public static bool IsContainsHtml(AdaptiveSubmitActionData qnaPairEntity)
         {
-            return Regex.IsMatch(qnaPairEntity?.UpdatedQuestion?.Trim(), HtmlPattern)
-                || Regex.IsMatch(qnaPairEntity?.ImageUrl?.Trim(), HtmlPattern)
-                || Regex.IsMatch(qnaPairEntity?.RedirectionUrl?.Trim(), HtmlPattern)
-                || Regex.IsMatch(qnaPairEntity?.Description?.Trim(), HtmlPattern)
-                || Regex.IsMatch(qnaPairEntity?.Subtitle?.Trim(), HtmlPattern)
-                || Regex.IsMatch(qnaPairEntity?.Title?.Trim(), HtmlPattern);
+            return Regex.IsMatch(qnaPairEntity?.UpdatedQuestion?.Trim() ?? string.Empty, HtmlPattern)
+                || Regex.IsMatch(qnaPairEntity?.ImageUrl?.Trim() ?? string.Empty, HtmlPattern)
+                || Regex.IsMatch(qnaPairEntity?.RedirectionUrl?.Trim() ?? string.Empty, HtmlPattern)
+                || Regex.IsMatch(qnaPairEntity?.Description?.Trim() ?? string.Empty, HtmlPattern)
+                || Regex.IsMatch(qnaPairEntity?.Subtitle?.Trim() ?? string.Empty, HtmlPattern)
+                || Regex.IsMatch(qnaPairEntity?.Title?.Trim() ?? string.Empty, HtmlPattern);
         }
 
         /// <summary>
