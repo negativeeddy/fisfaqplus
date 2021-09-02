@@ -96,6 +96,35 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 var worksheetPart = InsertWorksheet(workbookpart);
                 Worksheet worksheet = worksheetPart.Worksheet;
 
+                //AT
+
+                Columns lstColumns = worksheetPart.Worksheet.GetFirstChild<Columns>();
+                bool needToInsertColumns = false;
+                if (lstColumns == null)
+                {
+                    lstColumns = new Columns();
+                    needToInsertColumns = true;
+                }
+                // Min = 1, Max = 1 ==> Apply this to column 1 (A)
+                // Min = 2, Max = 2 ==> Apply this to column 2 (B)
+                // Width = 25 ==> Set the width to 25
+                // CustomWidth = true ==> Tell Excel to use the custom width
+                lstColumns.Append(new Column() { Min = 1, Max = 1, Width = 70, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 2, Max = 2, Width = 70, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 3, Max = 3, Width = 25, CustomWidth = true });
+
+                // Only insert the columns if we had to create a new columns element
+                if (needToInsertColumns)
+                {
+                    _ = worksheetPart.Worksheet.InsertAt(lstColumns, 0);
+                }
+
+                WorkbookStylesPart workStylePart = workbookpart.AddNewPart<WorkbookStylesPart>();
+                workStylePart.Stylesheet = CreateStylesheet();
+                workStylePart.Stylesheet.Save();
+
+                //AT
+
                 var sharedStringPart = workbookpart.AddNewPart<SharedStringTablePart>();
 
                 // If the part does not contain a SharedStringTable, create one.
@@ -120,6 +149,50 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                 // Save the new worksheet.
                 worksheetPart.Worksheet.Save();
             }
+        }
+
+        private static Stylesheet CreateStylesheet()
+        {
+            Stylesheet styleSheet = null;
+
+            Fonts fonts = new Fonts(
+                new Font( // Index 0 - default
+                    new FontSize() { Val = 10 }
+
+                ),
+                new Font( // Index 1 - header
+                    new FontSize() { Val = 10 },
+                    new Bold(),
+                    new Color() { Rgb = "FFFFFF" }
+
+                ));
+
+            Fills fills = new Fills(
+                    new Fill(new PatternFill() { PatternType = PatternValues.None }), // Index 0 - default
+                    new Fill(new PatternFill() { PatternType = PatternValues.Gray125 }), // Index 1 - default
+                    new Fill(new PatternFill(new ForegroundColor { Rgb = new HexBinaryValue() { Value = "66666666" } })
+                    { PatternType = PatternValues.Solid }) // Index 2 - header
+                );
+
+            Borders borders = new Borders(
+                    new Border(), // index 0 default
+                    new Border( // index 1 black border
+                        new LeftBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new RightBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new TopBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new BottomBorder(new Color() { Auto = true }) { Style = BorderStyleValues.Thin },
+                        new DiagonalBorder())
+                );
+
+            Alignment alignment = new Alignment() { WrapText = true };
+            CellFormats cellFormats = new CellFormats(
+                    new CellFormat(), // default
+                    new CellFormat { FontId = 0, FillId = 0, BorderId = 1, Alignment = alignment, ApplyBorder = true, ApplyAlignment = true }
+                );
+
+            styleSheet = new Stylesheet(fonts, fills, borders, cellFormats);
+
+            return styleSheet;
         }
 
         private static WorksheetPart InsertWorksheet(WorkbookPart workbookPart)
@@ -245,7 +318,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Helpers
                     }
                 }
 
-                Cell newCell = new Cell() { CellReference = cellReference };
+                Cell newCell = new Cell() { CellReference = cellReference, StyleIndex = 1 };
                 row.InsertBefore(newCell, refCell);
 
                 worksheet.Save();

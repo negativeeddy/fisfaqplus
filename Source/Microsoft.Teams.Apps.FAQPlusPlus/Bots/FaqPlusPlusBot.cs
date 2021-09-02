@@ -119,6 +119,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly TelemetryClient telemetryClient;
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IHttpClientFactory clientFactory;
+        private readonly IStatePropertyAccessor<string> languagePreference;
+        private readonly UserState userState;
+        private const string EnglishEnglish = "en";
+        private const string EnglishSpanish = "es";
+        private const string SpanishEnglish = "in";
+        private const string SpanishSpanish = "it";
 
         private static ConcurrentDictionary<string, byte[]> answersContentCache = new ConcurrentDictionary<string, byte[]>();
 
@@ -150,6 +156,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             IKnowledgeBaseSearchService knowledgeBaseSearchService,
             IOptionsMonitor<BotSettings> optionsAccessor,
             ILogger<FaqPlusPlusBot> logger,
+            UserState state,
             TelemetryClient telemetryClient)
         {
             this.clientFactory = clientFactory;
@@ -175,6 +182,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
             this.appBaseUri = this.options.AppBaseUri;
             this.knowledgeBaseSearchService = knowledgeBaseSearchService;
+
+            this.userState = state ?? throw new NullReferenceException(nameof(state));
+            this.languagePreference = state.CreateProperty<string>("LanguagePreference");
         }
 
         /// <summary>
