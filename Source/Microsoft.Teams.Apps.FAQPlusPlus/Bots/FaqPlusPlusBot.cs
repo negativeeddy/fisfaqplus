@@ -16,6 +16,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Microsoft.ApplicationInsights;
     using Microsoft.ApplicationInsights.DataContracts;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
@@ -91,6 +92,13 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private const string XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         private const string CSV_MIME_TYPE = "text/csv";
 
+        // telemetry event names
+        private const string EVENT_ANSWERED_QUESTION_BULK = "QuestionAnsweredBulk";
+        private const string EVENT_UPDATED_QUESTION = "QuestionUpdated";
+        private const string EVENT_MESSAGE_RECEIVED = "MessageReceived";
+        private const string EVENT_QUESTION_ADDED = "QuestionAdded";
+        private const string EVENT_ANSWERED_QUESTION_SINGLE = "QuestionAnsweredSingle";
+
         /// <summary>
         /// Represents a set of key/value application configuration properties for FaqPlusPlus bot.
         /// </summary>
@@ -108,6 +116,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly string appBaseUri;
         private readonly IKnowledgeBaseSearchService knowledgeBaseSearchService;
         private readonly ILogger<FaqPlusPlusBot> logger;
+        private readonly TelemetryClient telemetryClient;
         private readonly IQnaServiceProvider qnaServiceProvider;
         private readonly IHttpClientFactory clientFactory;
         private readonly IStatePropertyAccessor<string> languagePreference;
@@ -147,7 +156,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             IKnowledgeBaseSearchService knowledgeBaseSearchService,
             IOptionsMonitor<BotSettings> optionsAccessor,
             ILogger<FaqPlusPlusBot> logger,
-            UserState state)
+            UserState state,
+            TelemetryClient telemetryClient)
         {
             this.clientFactory = clientFactory;
             this.configurationProvider = configurationProvider;
@@ -161,6 +171,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             this.botAdapter = botAdapter;
             this.accessCache = memoryCache;
             this.logger = logger;
+            this.telemetryClient = telemetryClient;
             this.accessCacheExpiryInDays = this.options.AccessCacheExpiryInDays;
 
             if (this.accessCacheExpiryInDays <= 0)
@@ -230,6 +241,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             try
             {
                 var message = turnContext?.Activity;
+                this.telemetryClient.TrackEvent(
+                    EVENT_MESSAGE_RECEIVED,
+                    new Dictionary<string, string>
+                    {
+                        { "UserName" ,message.From.Name},
+                        { "UserAadId", message.From?.AadObjectId ?? "" },
+                    });
+
                 this.logger.LogInformation($"from: {message.From?.Id}, conversation: {message.Conversation.Id}, replyToId: {message.ReplyToId}");
                 await this.SendTypingIndicatorAsync(turnContext).ConfigureAwait(false);
 
@@ -742,6 +761,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 activityResponse = await turnContext.SendActivityAsync(MessageFactory.Attachment(MessagingExtensionQnaCard.ShowNormalCard(qnaPairEntity, turnContext.Activity.From.Name, actionPerformed: Strings.EntryCreatedByText)), cancellationToken).ConfigureAwait(false);
             }
 
+            this.telemetryClient.TrackEvent(
+                EVENT_QUESTION_ADDED, new Dictionary<string, string>
+                {
+                    { "UserName" ,turnContext.Activity.From.Name},
+                    { "UserAadId", turnContext.Activity.From?.AadObjectId ?? "" },
+                    { "QuestionId", qnaPairEntity.QnaPairId?.ToString() ?? "" },
+                    { "Question", qnaPairEntity.UpdatedQuestion },
+                });
+
             this.logger.LogInformation($"Question added by: {turnContext.Activity.From.AadObjectId}");
             ActivityEntity activityEntity = new ActivityEntity { ActivityId = activityResponse.Id, ActivityReferenceId = activityReferenceId };
             bool operationStatus = await this.activityStorageProvider.AddActivityEntityAsync(activityEntity).ConfigureAwait(false);
@@ -929,6 +957,19 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
 
             sw.Stop();
+
+            this.telemetryClient.TrackEvent(
+                EVENT_ANSWERED_QUESTION_BULK,
+                new Dictionary<string, string>
+                {
+                    { "UserName" ,turnContext.Activity.From.Name},
+                    { "UserAadId ", turnContext.Activity.From?.AadObjectId ?? "" },
+                },
+                new Dictionary<string,double>
+                {
+                    { "Seconds", sw.Elapsed.TotalSeconds},
+                    { "Count", questions.Count},
+                });
 
             this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
 
@@ -1427,6 +1468,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             {
                 int qnaPairId = searchResult.Id.Value;
                 this.logger.LogInformation($"Question updated by: {turnContext.Activity.Conversation.AadObjectId}");
+                this.telemetryClient.TrackEvent(
+                    EVENT_UPDATED_QUESTION,
+                    new Dictionary<string, string>
+                    {
+                        { "UserName" ,turnContext.Activity.From.Name},
+                        { "UserAadId", turnContext.Activity.From?.AadObjectId ?? string.Empty },
+                        { "Question", searchResult.Questions[0] },
+                        { "QuestionId", searchResult.Id.ToString() },
+                    });
                 Attachment attachment = new Attachment();
                 if (qnaPairEntity.IsRichCard)
                 {
@@ -1728,6 +1778,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         await turnContext.SendActivityAsync(MessageFactory.Attachment(ResponseCard.GetCard(answerData, text, this.appBaseUri, payload))).ConfigureAwait(false);
                     }
+
+                    this.telemetryClient.TrackEvent(
+                        EVENT_ANSWERED_QUESTION_SINGLE,
+                        new Dictionary<string, string>
+                        {
+                                { "QuestionId" ,payload.QnaPairId.ToString() },
+                                { "QuestionAnswered", queryResult.Answers[0].Questions[0] },
+                                { "QuestionAsked", text },
+                                { "UserName" ,turnContext.Activity.From.Name},
+                                { "UserAadId", turnContext.Activity.From?.AadObjectId ?? "" },
+                        });
+
                 }
                 else
                 {
