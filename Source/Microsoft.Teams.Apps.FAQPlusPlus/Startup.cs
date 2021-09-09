@@ -129,6 +129,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 
             services.AddSingleton<ICredentialProvider, ConfigurationCredentialProvider>();
             services.AddSingleton<ITicketsProvider>(new TicketsProvider(this.Configuration["StorageConnectionString"]));
+            services.AddSingleton<IBatchFileProvider>(new BatchFileStorageProvider(this.Configuration["StorageConnectionString"]));
             // services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
             services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddSingleton(new MicrosoftAppCredentials(this.Configuration["MicrosoftAppId"], this.Configuration["MicrosoftAppPassword"]));

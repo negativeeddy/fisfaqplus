@@ -107,6 +107,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IConfigurationDataProvider configurationProvider;
         private readonly MicrosoftAppCredentials microsoftAppCredentials;
         private readonly ITicketsProvider ticketsProvider;
+        private readonly IBatchFileProvider batchFileProvider;
         private readonly IActivityStorageProvider activityStorageProvider;
         private readonly ISearchService searchService;
         private readonly string appId;
@@ -125,8 +126,6 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private const string EnglishSpanish = "es";
         private const string SpanishEnglish = "in";
         private const string SpanishSpanish = "it";
-
-        private static ConcurrentDictionary<string, byte[]> answersContentCache = new ConcurrentDictionary<string, byte[]>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
@@ -148,6 +147,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             Common.Providers.IConfigurationDataProvider configurationProvider,
             MicrosoftAppCredentials microsoftAppCredentials,
             ITicketsProvider ticketsProvider,
+            IBatchFileProvider batchFileStorageProvider,
             IQnaServiceProvider qnaServiceProvider,
             IActivityStorageProvider activityStorageProvider,
             ISearchService searchService,
@@ -163,6 +163,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             this.configurationProvider = configurationProvider;
             this.microsoftAppCredentials = microsoftAppCredentials;
             this.ticketsProvider = ticketsProvider;
+            this.batchFileProvider = batchFileStorageProvider;
             this.options = optionsAccessor.CurrentValue;
             this.qnaServiceProvider = qnaServiceProvider;
             this.activityStorageProvider = activityStorageProvider;
@@ -989,9 +990,35 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     break;
             }
 
-            answersContentCache.AddOrUpdate(turnContext.Activity.From.Id, answersContent, (_, __) => answersContent);
+            await StoreBatchAnswers(turnContext.Activity.From.Id, answersContent);
 
             await this.SendFileCardAsync(turnContext, filename, newFilename, answersContent, cancellationToken);
+        }
+
+        /// <summary>
+        /// store the results of a batch processing to table storage
+        /// </summary>
+        /// <param name="id">the key</param>
+        /// <param name="answersContent">the content</param>
+        /// <returns>a task</returns>
+        private async Task StoreBatchAnswers(string id, byte[] answersContent)
+        {
+            await batchFileProvider.UpsertBatchFileAsync(new BatchFileEntity
+            {
+                Id = id,
+                FileBytes = answersContent
+            });
+        }
+
+        /// <summary>
+        /// retrieves the results of a batch processing to table storage
+        /// </summary>
+        /// <param name="id">the key</param>
+        /// <returns>the file containing the answers</returns>
+        private async Task<byte[]> GetBatchAnswers(string id)
+        {
+            var entity = await this.batchFileProvider.GetBatchFileAsync(id);
+            return entity?.FileBytes;
         }
 
         private async Task ProcessInPersonalChatMessage(IMessageActivity message, ITurnContext<IMessageActivity> turnContext)
@@ -1915,23 +1942,22 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 var context = JObject.FromObject(fileConsentCardResponse.Context);
 
                 var client = this.clientFactory.CreateClient();
-                bool result = answersContentCache.TryGetValue(context["id"].Value<string>(), out byte[] answersContent);
-                if (result)
+                byte[] answersContent = await GetBatchAnswers(context["id"].Value<string>());
+                if (answersContent != null)
                 {
                     this.logger.LogInformation("found file for user");
+                    var content = new ByteArrayContent(answersContent);
+                    content.Headers.ContentLength = answersContent.Length;
+                    content.Headers.ContentRange = new ContentRangeHeaderValue(0, answersContent.Length - 1, answersContent.Length);
+                    var response = await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, content, cancellationToken);
+                    response.EnsureSuccessStatusCode();
+                    await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
+                    this.logger.LogInformation("uploaded file");
                 }
                 else
                 {
-                    this.logger.LogError("did found file for user");
+                    this.logger.LogError("did not find file for user");
                 }
-                // TODO : Change to get the content of the output file from Context
-                var content = new ByteArrayContent(answersContent);
-                content.Headers.ContentLength = answersContent.Length;
-                content.Headers.ContentRange = new ContentRangeHeaderValue(0, answersContent.Length - 1, answersContent.Length);
-                var response = await client.PutAsync(fileConsentCardResponse.UploadInfo.UploadUrl, content, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                await this.FileUploadCompletedAsync(turnContext, fileConsentCardResponse, cancellationToken);
-                this.logger.LogInformation("uploaded file");
             }
             catch (Exception e)
             {
