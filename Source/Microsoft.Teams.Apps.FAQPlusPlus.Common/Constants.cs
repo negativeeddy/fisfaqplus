@@ -86,6 +86,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common
         public const string TicketTableName = "Tickets";
 
         /// <summary>
+        /// Table name where SME activity details from bot will be saved.
+        /// </summary>
+        public const string BatchFileTableName = "BatchFileAnswers";
+
+        /// <summary>
         /// Name of column value to map with knowledgebase id in table storage.
         /// </summary>
         public const string KnowledgeBaseEntityId = "KnowledgeBaseId";
