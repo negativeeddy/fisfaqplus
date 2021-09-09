@@ -248,6 +248,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         { "UserName" ,message.From.Name},
                         { "UserAadId", message.From?.AadObjectId ?? "" },
+                        { "Product", options.ProductName },
                     });
 
                 this.logger.LogInformation($"from: {message.From?.Id}, conversation: {message.Conversation.Id}, replyToId: {message.ReplyToId}");
@@ -769,6 +770,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     { "UserAadId", turnContext.Activity.From?.AadObjectId ?? "" },
                     { "QuestionId", qnaPairEntity.QnaPairId?.ToString() ?? "" },
                     { "Question", qnaPairEntity.UpdatedQuestion },
+                    { "Product", options.ProductName },
                 });
 
             this.logger.LogInformation($"Question added by: {turnContext.Activity.From.AadObjectId}");
@@ -965,8 +967,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 {
                     { "UserName" ,turnContext.Activity.From.Name},
                     { "UserAadId ", turnContext.Activity.From?.AadObjectId ?? "" },
+                    { "Product", options.ProductName },
                 },
-                new Dictionary<string,double>
+                new Dictionary<string, double>
                 {
                     { "Seconds", sw.Elapsed.TotalSeconds},
                     { "Count", questions.Count},
@@ -1503,6 +1506,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                         { "UserAadId", turnContext.Activity.From?.AadObjectId ?? string.Empty },
                         { "Question", searchResult.Questions[0] },
                         { "QuestionId", searchResult.Id.ToString() },
+                        { "Product", options.ProductName },
                     });
                 Attachment attachment = new Attachment();
                 if (qnaPairEntity.IsRichCard)
@@ -1815,6 +1819,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                                 { "QuestionAsked", text },
                                 { "UserName" ,turnContext.Activity.From.Name},
                                 { "UserAadId", turnContext.Activity.From?.AadObjectId ?? "" },
+                                { "Product", options.ProductName },
                         });
 
                 }
