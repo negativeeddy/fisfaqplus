@@ -101,6 +101,15 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
                 botSettings.AppBaseUri = this.Configuration["AppBaseUri"];
                 botSettings.MicrosoftAppId = this.Configuration["MicrosoftAppId"];
                 botSettings.TenantId = this.Configuration["TenantId"];
+                string productName = this.Configuration["ProductName"];
+                if (!string.IsNullOrEmpty(productName))
+                {
+                    botSettings.ProductName = productName;
+                }
+                else
+                {
+                    botSettings.ProductName = "Not Set";
+                }
             });
 
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
