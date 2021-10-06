@@ -118,8 +118,15 @@
         {
             var defaultLanguage = this.translatorSettings.DefaultLanguage;
 
-            string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage, cancellationToken) ?? defaultLanguage;
-            return userLanguage != defaultLanguage;
+            try
+            {
+                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage, cancellationToken) ?? defaultLanguage;
+                return userLanguage != defaultLanguage;
+            }
+            catch(Exception ex)
+            {
+                return false;
+            }
         }
     }
 }
