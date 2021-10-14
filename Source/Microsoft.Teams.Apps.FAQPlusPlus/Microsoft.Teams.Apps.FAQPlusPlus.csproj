@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <DocumentationFile>bin\Microsoft.Teams.Apps.FAQPlusPlus.xml</DocumentationFile>
     <LangVersion>latest</LangVersion>
     <UserSecretsId>1afe81f2-7b30-4dc0-b0a3-263cb283f294</UserSecretsId>
