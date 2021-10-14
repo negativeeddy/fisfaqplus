@@ -53,7 +53,7 @@
                 throw new ArgumentNullException(nameof(turnContext));
             }
 
-            var translate = await this.ShouldTranslateAsync(turnContext, cancellationToken);
+            (bool translate, string userLanguage) = await this.ShouldTranslateAsync(turnContext, cancellationToken);
 
             if (translate)
             {
@@ -61,15 +61,8 @@
                 {
                     turnContext.Activity.Text = await this.translator.TranslateAsync(turnContext.Activity.Text, defaultLanguage, cancellationToken);
                 }
-            }
 
-            turnContext.OnSendActivities(async (newContext, activities, nextSend) =>
-            {
-                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
-                bool shouldTranslate = userLanguage != defaultLanguage;
-
-                // Translate messages sent to the user to user language
-                if (shouldTranslate)
+                turnContext.OnSendActivities(async (newContext, activities, nextSend) =>
                 {
                     List<Task> tasks = new ();
                     foreach (Activity currentActivity in activities.Where(a => a.Type == ActivityTypes.Message))
@@ -81,27 +74,27 @@
                     {
                         await Task.WhenAll(tasks).ConfigureAwait(false);
                     }
-                }
 
-                return await nextSend();
-            });
+                    return await nextSend();
+                });
 
-            turnContext.OnUpdateActivity(async (newContext, activity, nextUpdate) =>
-            {
-                string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
-                bool shouldTranslate = userLanguage != defaultLanguage;
-
-                // Translate messages sent to the user to user language
-                if (activity.Type == ActivityTypes.Message)
+                turnContext.OnUpdateActivity(async (newContext, activity, nextUpdate) =>
                 {
-                    if (shouldTranslate)
-                    {
-                        await this.TranslateMessageActivityAsync(activity.AsMessageActivity(), userLanguage);
-                    }
-                }
+                    string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
+                    bool shouldTranslate = userLanguage != defaultLanguage;
 
-                return await nextUpdate();
-            });
+                    // Translate messages sent to the user to user language
+                    if (activity.Type == ActivityTypes.Message)
+                    {
+                        if (shouldTranslate)
+                        {
+                            await this.TranslateMessageActivityAsync(activity.AsMessageActivity(), userLanguage);
+                        }
+                    }
+
+                    return await nextUpdate();
+                });
+            }
 
             await next(cancellationToken).ConfigureAwait(false);
         }
@@ -114,18 +107,18 @@
             }
         }
 
-        private async Task<bool> ShouldTranslateAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
+        private async Task<(bool, string)> ShouldTranslateAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
         {
             var defaultLanguage = this.translatorSettings.DefaultLanguage;
 
             try
             {
                 string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage, cancellationToken) ?? defaultLanguage;
-                return userLanguage != defaultLanguage;
+                return (userLanguage != defaultLanguage, userLanguage);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                return false;
+                return (false, defaultLanguage);
             }
         }
     }
