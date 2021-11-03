@@ -64,7 +64,7 @@
 
                 turnContext.OnSendActivities(async (newContext, activities, nextSend) =>
                 {
-                    List<Task> tasks = new ();
+                    List<Task> tasks = new();
                     foreach (Activity currentActivity in activities.Where(a => a.Type == ActivityTypes.Message))
                     {
                         tasks.Add(this.TranslateMessageActivityAsync(currentActivity.AsMessageActivity(), userLanguage));
@@ -80,16 +80,10 @@
 
                 turnContext.OnUpdateActivity(async (newContext, activity, nextUpdate) =>
                 {
-                    string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage) ?? defaultLanguage;
-                    bool shouldTranslate = userLanguage != defaultLanguage;
-
                     // Translate messages sent to the user to user language
                     if (activity.Type == ActivityTypes.Message)
                     {
-                        if (shouldTranslate)
-                        {
-                            await this.TranslateMessageActivityAsync(activity.AsMessageActivity(), userLanguage);
-                        }
+                        await this.TranslateMessageActivityAsync(activity.AsMessageActivity(), userLanguage);
                     }
 
                     return await nextUpdate();
@@ -103,7 +97,10 @@
         {
             if (activity.Type == ActivityTypes.Message)
             {
-                activity.Text = await this.translator.TranslateAsync(activity.Text, targetLocale);
+                if (activity.Text is not null)
+                {
+                    activity.Text = await this.translator.TranslateAsync(activity.Text, targetLocale);
+                }
             }
         }
 
@@ -114,6 +111,7 @@
             try
             {
                 string userLanguage = await this.languageStateProperty.GetAsync(turnContext, () => defaultLanguage, cancellationToken) ?? defaultLanguage;
+
                 return (userLanguage != defaultLanguage, userLanguage);
             }
             catch (Exception ex)

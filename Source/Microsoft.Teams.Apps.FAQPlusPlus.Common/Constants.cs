@@ -91,6 +91,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common
         public const string BatchFileTableName = "BatchFileAnswers";
 
         /// <summary>
+        /// Table name where batch answer files will be stored.
+        /// </summary>
+        public const string BatchBlobName = "batch-file-answers";
+
+        /// <summary>
         /// Name of column value to map with knowledgebase id in table storage.
         /// </summary>
         public const string KnowledgeBaseEntityId = "KnowledgeBaseId";

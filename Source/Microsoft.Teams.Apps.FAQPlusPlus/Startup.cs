@@ -6,6 +6,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 {
     using System;
     using System.Threading.Tasks;
+    using Microsoft.ApplicationInsights;
     using Microsoft.AspNetCore.Builder;
     using Microsoft.AspNetCore.Hosting;
     using Microsoft.AspNetCore.Mvc;
@@ -142,7 +143,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 
             services.AddSingleton<ICredentialProvider, ConfigurationCredentialProvider>();
             services.AddSingleton<ITicketsProvider>(new TicketsProvider(this.Configuration["StorageConnectionString"]));
-            services.AddSingleton<IBatchFileProvider>(new BatchFileStorageProvider(this.Configuration["StorageConnectionString"]));
+            services.AddSingleton<IBatchFileProvider>(svc =>
+                {
+                    var telemetryClient = svc.GetService<TelemetryClient>();
+                    return new BlobBatchFileStorageProvider(this.Configuration["StorageConnectionString"], telemetryClient);
+                });
             // services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
             services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddSingleton(new MicrosoftAppCredentials(this.Configuration["MicrosoftAppId"], this.Configuration["MicrosoftAppPassword"]));
