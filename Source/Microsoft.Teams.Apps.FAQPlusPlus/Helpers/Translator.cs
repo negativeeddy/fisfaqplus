@@ -19,6 +19,7 @@
         private static readonly HttpClient client = new HttpClient();
 
         private readonly string key;
+        private readonly string region;
 
 
         /// <summary>
@@ -27,8 +28,8 @@
         /// <param name="configuration">Configuration info</param>
         public Translator(IConfiguration configuration)
         {
-            var key = configuration["TranslatorKey"];
-            this.key = key ?? throw new ArgumentNullException(nameof(key));
+            this.key = configuration["TranslatorKey"] ?? throw new ArgumentNullException(nameof(key));
+            this.region = configuration["TranslatorKeyRegion"] ?? throw new ArgumentNullException(nameof(region));
         }
 
         /// <summary>
@@ -52,6 +53,7 @@
                 request.RequestUri = new Uri(uri);
                 request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
                 request.Headers.Add("Ocp-Apim-Subscription-Key", key);
+                request.Headers.Add("Ocp-Apim-Subscription-Region", region);
 
                 var response = await client.SendAsync(request, cancellationToken);
 

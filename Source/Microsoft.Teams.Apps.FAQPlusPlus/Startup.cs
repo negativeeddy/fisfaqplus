@@ -6,6 +6,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 {
     using System;
     using System.Threading.Tasks;
+    using Microsoft.ApplicationInsights;
     using Microsoft.AspNetCore.Builder;
     using Microsoft.AspNetCore.Hosting;
     using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
     using Microsoft.Extensions.Caching.Memory;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Options;
     using Microsoft.Teams.Apps.FAQPlusPlus.Bots;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
@@ -32,24 +34,26 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
         /// Initializes a new instance of the <see cref="Startup"/> class.
         /// </summary>
         /// <param name="configuration">Startup Configuration.</param>
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
         {
             this.Configuration = configuration;
+            Environment = environment;
         }
 
         /// <summary>
         /// Gets Configurations Interfaces.
         /// </summary>
         public IConfiguration Configuration { get; }
+        public IWebHostEnvironment Environment { get; }
 
         /// <summary>
         /// This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         /// </summary>
         /// <param name="app">Application Builder.</param>
         /// <param name="env">Hosting Environment.</param>
-        public static void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app)
         {
-            if (env.IsDevelopment())
+            if (Environment.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
@@ -58,9 +62,10 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
                 app.UseHsts();
             }
 
-            app.UseDefaultFiles();
             app.UseStaticFiles();
-            app.UseMvc();
+            app.UseRouting();
+            app.UseDefaultFiles();
+            app.UseEndpoints(endpoints => { endpoints.MapControllers(); });
         }
 
         private static string StripRouteFromQnAMakerEndpoint(string endpoint)
@@ -138,14 +143,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
 
             services.AddSingleton<ICredentialProvider, ConfigurationCredentialProvider>();
             services.AddSingleton<ITicketsProvider>(new TicketsProvider(this.Configuration["StorageConnectionString"]));
-            services.AddSingleton<IBatchFileProvider>(new BatchFileStorageProvider(this.Configuration["StorageConnectionString"]));
+            services.AddSingleton<IBatchFileProvider>(svc =>
+                {
+                    var telemetryClient = svc.GetService<TelemetryClient>();
+                    return new BlobBatchFileStorageProvider(this.Configuration["StorageConnectionString"], telemetryClient);
+                });
             // services.AddSingleton<IBotFrameworkHttpAdapter, BotFrameworkHttpAdapter>();
             services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddSingleton(new MicrosoftAppCredentials(this.Configuration["MicrosoftAppId"], this.Configuration["MicrosoftAppPassword"]));
 
             IQnAMakerClient qnaMakerClient = new QnAMakerClient(
                 new ApiKeyServiceClientCredentials(this.Configuration["QnAMakerSubscriptionKey"]))
-            { Endpoint = StripRouteFromQnAMakerEndpoint(this.Configuration["QnAMakerApiEndpointUrl"])};
+            { Endpoint = StripRouteFromQnAMakerEndpoint(this.Configuration["QnAMakerApiEndpointUrl"]) };
             string endpointKey = this.Configuration["PrimaryEndpointKey"]; //Task.Run(() => qnaMakerClient.EndpointKeys.GetKeysAsync()).Result.PrimaryEndpointKey;
 
             services.AddSingleton<IQnaServiceProvider>((provider) => new QnaServiceProvider(

@@ -43,8 +43,7 @@
                 logger.LogError(exception, $"[OnTurnError] unhandled error : {exception.Message}");
 
                 // Send a message to the user
-                await SendWithoutMiddleware(turnContext, "The bot encountered an error or bug.");
-                await SendWithoutMiddleware(turnContext, "To continue to run this bot, please fix the bot source code.");
+                await SendWithoutMiddleware(turnContext, "An unknown error occurred, please try again or if the error persists please notify the RFP CoE.");
 
                 if (conversationState != null)
                 {
