@@ -135,11 +135,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             services.AddSingleton<ConversationState>();
 
             // Create the Microsoft Translator responsible for making calls to the Cognitive Services translation service
-            services.AddSingleton<Translator>();
-            services.AddSingleton<TranslationSettings>();
+            //services.AddSingleton<Translator>();
+            //services.AddSingleton<TranslationSettings>();
 
             // Create the Translation Middleware that will be added to the middleware pipeline in the AdapterWithErrorHandler
-            services.AddSingleton<TranslationMiddleware>();
+            //services.AddSingleton<TranslationMiddleware>();
 
             services.AddSingleton<ICredentialProvider, ConfigurationCredentialProvider>();
             services.AddSingleton<ITicketsProvider>(new TicketsProvider(this.Configuration["StorageConnectionString"]));
