@@ -21,18 +21,17 @@
         /// <param name="credentialProvider">Credential Providre</param>
         /// <param name="httpClient">Http Client</param>
         /// <param name="logger">logger</param>
-        /// <param name="translationMiddleware">Middleware</param>
         /// <param name="conversationState">conversationState</param>
-        public AdapterWithErrorHandler(ICredentialProvider credentialProvider, IChannelProvider channelProvider, ConversationState conversationState, TranslationMiddleware translationMiddleware, ILogger<BotFrameworkHttpAdapter> logger)
+        public AdapterWithErrorHandler(ICredentialProvider credentialProvider, IChannelProvider channelProvider, ConversationState conversationState, ILogger<BotFrameworkHttpAdapter> logger)
             : base(credentialProvider, channelProvider, logger)
         {
-            if (translationMiddleware == null)
-            {
-                throw new NullReferenceException(nameof(translationMiddleware));
-            }
+            //if (translationMiddleware == null)
+            //{
+            //    throw new NullReferenceException(nameof(translationMiddleware));
+            //}
 
             // Add translation middleware to the adapter's middleware pipeline
-            this.Use(translationMiddleware);
+            //this.Use(translationMiddleware);
 
             OnTurnError = async (turnContext, exception) =>
             {
