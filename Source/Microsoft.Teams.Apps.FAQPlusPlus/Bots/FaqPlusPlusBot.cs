@@ -21,6 +21,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Bot.Builder;
+    using Microsoft.Bot.Builder.Dialogs;
     using Microsoft.Bot.Builder.Teams;
     using Microsoft.Bot.Connector;
     using Microsoft.Bot.Connector.Authentication;
@@ -34,6 +35,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers;
+    using Microsoft.Teams.Apps.FAQPlusPlus.Dialogs;
     using Microsoft.Teams.Apps.FAQPlusPlus.Helpers;
     using Microsoft.Teams.Apps.FAQPlusPlus.Properties;
     using Newtonsoft.Json;
@@ -94,10 +96,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
 
         // telemetry event names
         private const string EVENT_ANSWERED_QUESTION_BULK = "QuestionAnsweredBulk";
+        private const string EVENT_TRANSLATED_QUESTION_BULK = "QuestionTranslatedBulk";
+        private const string EVENT_TRANSLATED_ANSWERS_BULK = "QuestionTranslatedBulk";
         private const string EVENT_UPDATED_QUESTION = "QuestionUpdated";
         private const string EVENT_MESSAGE_RECEIVED = "MessageReceived";
         private const string EVENT_QUESTION_ADDED = "QuestionAdded";
-        private const string EVENT_ANSWERED_QUESTION_SINGLE = "QuestionAnsweredSingle";
+        public const string EVENT_ANSWERED_QUESTION_SINGLE = "QuestionAnsweredSingle";
 
         /// <summary>
         /// Represents a set of key/value application configuration properties for FaqPlusPlus bot.
@@ -122,10 +126,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private readonly IHttpClientFactory clientFactory;
         private readonly IStatePropertyAccessor<string> languagePreference;
         private readonly UserState userState;
+        private readonly ConversationState conversationState;
+        private readonly PersonalChatMainDialog rootPersonalDialog;
+        private readonly TranslatorService translatorService;
         private const string EnglishEnglish = "en";
         private const string EnglishSpanish = "es";
         private const string SpanishEnglish = "in";
         private const string SpanishSpanish = "it";
+        private const string BatchResultsDirectory = "results/";
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FaqPlusPlusBot"/> class.
@@ -156,8 +164,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             IKnowledgeBaseSearchService knowledgeBaseSearchService,
             IOptionsMonitor<BotSettings> optionsAccessor,
             ILogger<FaqPlusPlusBot> logger,
-            UserState state,
-            TelemetryClient telemetryClient)
+            UserState userState,
+            PersonalChatMainDialog rootPersonalDialog,
+            ConversationState conversationState,
+            TelemetryClient telemetryClient,
+            TranslatorService translatorService)
         {
             this.clientFactory = clientFactory;
             this.configurationProvider = configurationProvider;
@@ -184,8 +195,11 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             this.appBaseUri = this.options.AppBaseUri;
             this.knowledgeBaseSearchService = knowledgeBaseSearchService;
 
-            this.userState = state ?? throw new NullReferenceException(nameof(state));
-            this.languagePreference = state.CreateProperty<string>("LanguagePreference");
+            this.userState = userState ?? throw new NullReferenceException(nameof(userState));
+            this.conversationState = conversationState ?? throw new NullReferenceException(nameof(conversationState));
+            this.rootPersonalDialog = rootPersonalDialog;
+            this.languagePreference = userState.CreateProperty<string>(TranslationMiddleware.PreferredLanguageSetting);
+            this.translatorService = translatorService;
         }
 
         /// <summary>
@@ -197,7 +211,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <remarks>
         /// Reference link: https://docs.microsoft.com/en-us/dotnet/api/microsoft.bot.builder.activityhandler.onturnasync?view=botbuilder-dotnet-stable.
         /// </remarks>
-        public override Task OnTurnAsync(
+        public override async Task OnTurnAsync(
             ITurnContext turnContext,
             CancellationToken cancellationToken = default)
         {
@@ -206,7 +220,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 if (turnContext != null & !this.IsActivityFromExpectedTenant(turnContext))
                 {
                     this.logger.LogWarning($"Unexpected tenant id {turnContext?.Activity.Conversation.TenantId}");
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 // Get the current culture info to use in resource files
@@ -217,12 +231,17 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(locale);
                 }
 
-                return base.OnTurnAsync(turnContext, cancellationToken);
+                await base.OnTurnAsync(turnContext, cancellationToken);
+
+
+                await conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+                await userState.SaveChangesAsync(turnContext, false, cancellationToken);
+
             }
             catch (Exception ex)
             {
                 this.logger.LogError(ex, "Error at OnTurnAsync()");
-                return base.OnTurnAsync(turnContext, cancellationToken);
+                await base.OnTurnAsync(turnContext, cancellationToken);
             }
         }
 
@@ -906,12 +925,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
 
             // Check if a file attachment of questions was received
-            (string filename, IList<AnswerItem> questions) = await TryGetQuestionsFromAttachment(turnContext.Activity);
+            (string filename, IList<AnswerItem> questions, string language) = await TryGetQuestionsFromAttachment(turnContext.Activity);
 
             // If we have a questions from the attachment, process the them to find out the answers from qnA maker
             if (questions != null)
             {
-                await ProcessInPersonalChatQuestionsAttachment(turnContext, filename, questions, cancellationToken);
+                await ProcessInPersonalChatQuestionsAttachment(turnContext, filename, questions, language, cancellationToken);
 
             }
             else
@@ -921,20 +940,62 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             }
         }
 
-        private async Task ProcessInPersonalChatQuestionsAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, CancellationToken cancellationToken)
+        private async Task ProcessInPersonalChatQuestionsAttachment(ITurnContext<IMessageActivity> turnContext, string filename, IList<AnswerItem> questions, string questionLanguage, CancellationToken cancellationToken)
         {
             string extension = Path.GetExtension(filename);
+            var sw = new System.Diagnostics.Stopwatch();
 
             await turnContext.SendActivityAsync($"I received your {extension.Substring(1)} file with {questions.Count} questions. One moment while I consult QnA Maker for the answers");
             await SendTypingIndicatorAsync(turnContext);
 
-            var sw = new System.Diagnostics.Stopwatch();
+            IList<AnswerItem> normalizedQuestions;
+            if (questionLanguage == translatorService.DefaultLanguage)
+            {
+                // just use the original list in place
+                normalizedQuestions = questions;
+            }
+            else
+            {
+                sw.Start();
+                // create a new set of questions in the default language
+                // first translate all the questions at once
+                var translationQuestions = await this.translatorService.TranslateAsync(
+                    questions.Select(x => x.Question).ToArray(),
+                    questionLanguage,
+                    this.translatorService.DefaultLanguage
+                );
+                sw.Stop();
+                this.telemetryClient.TrackEvent(
+                    EVENT_TRANSLATED_QUESTION_BULK,
+                    new Dictionary<string, string>
+                    {
+                        { "UserName" ,turnContext.Activity.From.Name},
+                        { "UserAadId ", turnContext.Activity.From?.AadObjectId ?? "" },
+                        { "Product", options.ProductName },
+                        { "Language", questionLanguage },
+                    },
+                    new Dictionary<string, double>
+                    {
+                        { "Seconds", sw.Elapsed.TotalSeconds},
+                        { "Count", questions.Count},
+                    });
+
+                // rebuild the normalizedQuestion list from the translated questions
+                normalizedQuestions = new AnswerItem[questions.Count];
+                for (int i = 0; i < questions.Count; i++)
+                {
+                    normalizedQuestions[i] = new AnswerItem();
+                    normalizedQuestions[i].Metadata = questions[i].Metadata;
+                    normalizedQuestions[i].Question = translationQuestions[i];
+                }
+            }
+
             sw.Start();
 
             // Create QnA object to store the answers from QnA
-            for (int i = 0; i < questions.Count; i++)
+            for (int i = 0; i < normalizedQuestions.Count; i++)
             {
-                var question = questions[i];
+                var question = normalizedQuestions[i];
                 if (string.IsNullOrEmpty(question.Question))
                 {
                     question.Answer = "ERROR reading input";
@@ -968,7 +1029,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     { "UserName" ,turnContext.Activity.From.Name},
                     { "UserAadId ", turnContext.Activity.From?.AadObjectId ?? "" },
                     { "Product", options.ProductName },
-                },
+                    { "Language", questionLanguage },
+               },
                 new Dictionary<string, double>
                 {
                     { "Seconds", sw.Elapsed.TotalSeconds},
@@ -976,6 +1038,38 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                 });
 
             this.logger.LogInformation("Queried QnA Maker for {Count} questions in {Seconds} seconds", questions.Count, sw.Elapsed.TotalSeconds);
+
+            if (questionLanguage != translatorService.DefaultLanguage)
+            {
+                sw.Start();
+                // first translate all the answers at once
+                var answersInOriginalLanguage = await this.translatorService.TranslateAsync(
+                    normalizedQuestions.Select(x => x.Answer).ToArray(),
+                    this.translatorService.DefaultLanguage,
+                    questionLanguage
+                );
+                sw.Stop();
+                this.telemetryClient.TrackEvent(
+                    EVENT_TRANSLATED_ANSWERS_BULK,
+                    new Dictionary<string, string>
+                    {
+                        { "UserName" ,turnContext.Activity.From.Name},
+                        { "UserAadId ", turnContext.Activity.From?.AadObjectId ?? "" },
+                        { "Product", options.ProductName },
+                        { "Language", questionLanguage },
+                    },
+                    new Dictionary<string, double>
+                    {
+                        { "Seconds", sw.Elapsed.TotalSeconds},
+                        { "Count", questions.Count},
+                    });
+
+                // populate the original question list with the translated answers
+                for (int i = 0; i < questions.Count; i++)
+                {
+                    questions[i].Answer = answersInOriginalLanguage[i];
+                }
+            }
 
             string newFilename = Path.GetFileNameWithoutExtension(filename) + turnContext.Activity.Id + extension;
 
@@ -1008,7 +1102,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         {
             await batchFileProvider.UpsertBatchFileAsync(new BatchFileEntity
             {
-                Id = id,
+                Id = BatchResultsDirectory + id,
                 FileBytes = answersContent
             });
         }
@@ -1020,43 +1114,22 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         /// <returns>the file containing the answers</returns>
         private async Task<byte[]> GetBatchAnswers(string id)
         {
-            var entity = await this.batchFileProvider.GetBatchFileAsync(id);
+            var entity = await this.batchFileProvider.GetBatchFileAsync(BatchResultsDirectory + id);
             return entity?.FileBytes;
         }
 
         private async Task ProcessInPersonalChatMessage(IMessageActivity message, ITurnContext<IMessageActivity> turnContext)
         {
-            string text = message.Text?.ToLower()?.Trim() ?? string.Empty;
-
-            switch (text)
-            {
-                case Constants.AskAnExpert:
-                    this.logger.LogInformation("Sending user ask an expert card");
-                    await turnContext.SendActivityAsync(MessageFactory.Attachment(AskAnExpertCard.GetCard())).ConfigureAwait(false);
-                    break;
-
-                case Constants.ShareFeedback:
-                    this.logger.LogInformation("Sending user feedback card");
-                    await turnContext.SendActivityAsync(MessageFactory.Attachment(ShareFeedbackCard.GetCard())).ConfigureAwait(false);
-                    break;
-
-                case Constants.TakeATour:
-                    this.logger.LogInformation("Sending user tour card");
-                    var userTourCards = TourCarousel.GetUserTourCards(this.appBaseUri);
-                    await turnContext.SendActivityAsync(MessageFactory.Carousel(userTourCards)).ConfigureAwait(false);
-                    break;
-
-                default:
-                    this.logger.LogInformation("Sending input to QnAMaker");
-                    await this.GetQuestionAnswerReplyAsync(turnContext, message).ConfigureAwait(false);
-                    break;
-            }
+            // dialogs can happen in personal chat when its not an attachment
+            await rootPersonalDialog.RunAsync(turnContext, conversationState.CreateProperty<DialogState>(nameof(DialogState)), CancellationToken.None);
         }
 
-        private async Task<(string name, IList<AnswerItem> answers)> TryGetQuestionsFromAttachment(IMessageActivity activity)
+        private async Task<(string name, IList<AnswerItem> answers, string language)> TryGetQuestionsFromAttachment(IMessageActivity activity)
         {
             string contentUrl = null;
             string filename = null;
+            string language = translatorService.DefaultLanguage;
+
             IList<AnswerItem> answerItems = null;
 
             if (activity.ChannelId == Channels.Msteams)
@@ -1105,13 +1178,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     case XLSX_EXTENSION:
                         using (Stream stream = await response.Content.ReadAsStreamAsync())
                         {
-                            answerItems = XlsxHelper.QuestionsFromXlsx(stream);
+                            string tmpLanguage;
+                            (answerItems, tmpLanguage) = XlsxHelper.QuestionsFromXlsx(stream);
+                            if (!string.IsNullOrWhiteSpace(language) && await translatorService.IsValidTranslationLanguage(tmpLanguage))
+                            {
+                                language = tmpLanguage;
+                            }
                         }
                         break;
                 }
             }
 
-            return (filename, answerItems);
+            return (filename, answerItems, language);
         }
 
         /// <summary>
