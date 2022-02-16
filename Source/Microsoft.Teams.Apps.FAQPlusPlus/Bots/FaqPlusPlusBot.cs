@@ -1181,7 +1181,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                         {
                             string tmpLanguageCode;
                             (answerItems, tmpLanguageCode) = XlsxHelper.QuestionsFromXlsx(stream);
-                            if (!string.IsNullOrWhiteSpace(languageCode) && await translatorService.IsValidTranslationLanguageCode(tmpLanguageCode))
+                            if (!string.IsNullOrWhiteSpace(tmpLanguageCode) && await translatorService.IsValidTranslationLanguageCode(tmpLanguageCode))
                             {
                                 languageCode = tmpLanguageCode;
                             }
