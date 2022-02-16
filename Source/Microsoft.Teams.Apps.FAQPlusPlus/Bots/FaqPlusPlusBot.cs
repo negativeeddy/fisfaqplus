@@ -458,7 +458,8 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
             catch (Exception ex)
             {
                 // Check if knowledge base is empty and has not published yet when sme user is trying to edit the qna pair.
-                if (((ErrorResponseException)ex?.InnerException)?.Response.StatusCode == HttpStatusCode.BadRequest)
+                var errorResponseException = ex?.InnerException as ErrorResponseException;
+                if (errorResponseException?.Response.StatusCode == HttpStatusCode.BadRequest)
                 {
                     var knowledgeBaseId = await this.configurationProvider.GetSavedEntityDetailAsync(Constants.KnowledgeBaseEntityId).ConfigureAwait(false);
                     var hasPublished = await this.qnaServiceProvider.GetInitialPublishedStatusAsync(knowledgeBaseId).ConfigureAwait(false);
