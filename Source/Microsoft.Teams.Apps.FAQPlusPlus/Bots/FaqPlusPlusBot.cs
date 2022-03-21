@@ -641,7 +641,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
         private async Task<TaskModuleResponse> GetTaskModuleResponseAsync(Attachment questionAnswerAdaptiveCardEditor, string titleText = "", int? questionID = null)
         {
             string editFormUri = await this.configurationProvider.GetSavedEntityDetailAsync("EditFormUri");
-
+            
             var taskModuleInfo = new TaskModuleTaskInfo
             {
                 Height = TaskModuleHeight,
@@ -895,15 +895,18 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
            CancellationToken cancellationToken)
         {
             var activity = turnContext.Activity;
-            if (membersAdded.Any(channelAccount => channelAccount.Id == activity.Recipient.Id))
+            if (membersAdded != null)
             {
-                // Bot was added to a team
-                this.logger.LogInformation($"Bot added to team {activity.Conversation.Id}");
+                if (membersAdded.Any(channelAccount => channelAccount.Id == activity.Recipient.Id))
+                {
+                    // Bot was added to a team
+                    this.logger.LogInformation($"Bot added to team {activity.Conversation.Id}");
 
-                var teamDetails = ((JObject)turnContext.Activity.ChannelData).ToObject<TeamsChannelData>();
-                var botDisplayName = turnContext.Activity.Recipient.Name;
-                var teamWelcomeCardAttachment = WelcomeTeamCard.GetCard();
-                await this.SendCardToTeamAsync(turnContext, teamWelcomeCardAttachment, teamDetails.Team.Id, cancellationToken).ConfigureAwait(false);
+                    var teamDetails = ((JObject)turnContext.Activity.ChannelData).ToObject<TeamsChannelData>();
+                    var botDisplayName = turnContext.Activity.Recipient.Name;
+                    var teamWelcomeCardAttachment = WelcomeTeamCard.GetCard();
+                    await this.SendCardToTeamAsync(turnContext, teamWelcomeCardAttachment, teamDetails.Team.Id, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
 
