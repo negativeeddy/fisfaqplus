@@ -1012,8 +1012,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Bots
                     {
                         QueryTag[] tags = question.Metadata?.Split('|').Select(x =>
                         {
+                            x = x.Trim();
                             string[] parts = x.Split(':');
-                            return new QueryTag() { Name = parts[0], Value = parts[1] };
+                            return new QueryTag() { Name = parts[0].Trim(), Value = parts[1].Trim() };
                         }).ToArray();
 
                         if (tags?.Length == 0)
