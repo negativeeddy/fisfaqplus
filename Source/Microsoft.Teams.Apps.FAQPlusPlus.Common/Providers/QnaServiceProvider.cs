@@ -4,18 +4,17 @@
 
 namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.Linq;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using System.Web;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker;
     using Microsoft.Azure.CognitiveServices.Knowledge.QnAMaker.Models;
     using Microsoft.Extensions.Options;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
+    using System;
+    using System.Collections.Generic;
+    using System.Globalization;
+    using System.Linq;
+    using System.Threading.Tasks;
+    using System.Web;
 
     /// <summary>
     /// Qna maker service provider class.
@@ -210,8 +209,14 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
                 IsTest = isTestKnowledgeBase,
                 Question = question?.Trim(),
                 ScoreThreshold = Convert.ToDouble(this.options.ScoreThreshold, CultureInfo.InvariantCulture),
-                StrictFilters = tags?.Select(x => new MetadataDTO(x.Name, x.Value)).ToList(),
             };
+
+            // if metadata tags are provided, add those to the query
+            if (tags != null)
+            {
+                queryDTO.StrictFilters = tags.Select(x => new MetadataDTO(x.Name, x.Value)).ToList();
+                queryDTO.StrictFiltersCompoundOperationType = StrictFiltersCompoundOperationType.AND;
+            }
 
             if (previousQnAId != null && previousUserQuery != null)
             {
