@@ -73,12 +73,12 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <param name="conversationId">Conversation id.</param>
         /// <param name="activityReferenceId">Activity reference id refer to activityid in storage table.</param>
         /// <returns>Operation state as task.</returns>
-        public async Task<Operation> AddQnaAsync(string question, string combinedDescription, string createdBy, string conversationId, string activityReferenceId)
+        public async Task AddQnaAsync(string question, string combinedDescription, string createdBy, string conversationId, string activityReferenceId)
         {
             var knowledgeBase = await this.configurationProvider.GetSavedEntityDetailAsync(ConfigurationEntityTypes.KnowledgeBaseId).ConfigureAwait(false);
 
             // Update knowledgebase.
-            return await this.qnaMakerClient.Knowledgebase.UpdateAsync(knowledgeBase, new UpdateKbOperationDTO
+            await this.qnaMakerClient.Knowledgebase.UpdateAsync(knowledgeBase, new UpdateKbOperationDTO
             {
                 // Create JSON of changes.
                 Add = new UpdateKbOperationDTOAdd

@@ -23,6 +23,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
     using Microsoft.Teams.Apps.FAQPlusPlus.Bots;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
     using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers;
+    using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers.QuestionAnswering;
     using Microsoft.Teams.Apps.FAQPlusPlus.Dialogs;
     using Microsoft.Teams.Apps.FAQPlusPlus.Helpers;
 
@@ -161,11 +162,9 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus
             { Endpoint = StripRouteFromQnAMakerEndpoint(this.Configuration["QnAMakerApiEndpointUrl"]) };
             string endpointKey = this.Configuration["PrimaryEndpointKey"]; //Task.Run(() => qnaMakerClient.EndpointKeys.GetKeysAsync()).Result.PrimaryEndpointKey;
 
-            services.AddSingleton<IQnaServiceProvider>((provider) => new QnaServiceProvider(
+            services.AddSingleton<IQnaServiceProvider>((provider) => new QuestionAnsweringQnaProvider(
                 provider.GetRequiredService<Common.Providers.IConfigurationDataProvider>(),
-                provider.GetRequiredService<IOptionsMonitor<QnAMakerSettings>>(),
-                qnaMakerClient,
-                new QnAMakerRuntimeClient(new EndpointKeyServiceClientCredentials(endpointKey)) { RuntimeEndpoint = this.Configuration["QnAMakerHostUrl"] }));
+                provider.GetRequiredService<IOptionsMonitor<QnAMakerSettings>>()));
             services.AddSingleton<IActivityStorageProvider>((provider) => new ActivityStorageProvider(provider.GetRequiredService<IOptionsMonitor<KnowledgeBaseSettings>>()));
             services.AddSingleton<IKnowledgeBaseSearchService>((provider) => new KnowledgeBaseSearchService(this.Configuration["SearchServiceName"], this.Configuration["SearchServiceQueryApiKey"], this.Configuration["SearchServiceAdminApiKey"], this.Configuration["StorageConnectionString"]));
             services.AddSingleton<IImageStorageProvider>((provider) => new ImageStorageProvider(this.Configuration["StorageConnectionString"]));

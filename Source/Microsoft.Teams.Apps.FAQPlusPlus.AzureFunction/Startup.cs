@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Teams.Apps.FAQPlusPlus.AzureFunction;
 using Microsoft.Teams.Apps.FAQPlusPlus.Common.Models.Configuration;
 using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers;
+using Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers.QuestionAnswering;
 using IConfigurationDataProvider = Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers.IConfigurationDataProvider;
 
 [assembly: WebJobsStartup(typeof(Startup))]
@@ -29,7 +30,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.AzureFunction
         public void Configure(IWebJobsBuilder builder)
         {
             IQnAMakerClient qnaMakerClient = new QnAMakerClient(new ApiKeyServiceClientCredentials(Environment.GetEnvironmentVariable("QnAMakerSubscriptionKey"))) { Endpoint = Environment.GetEnvironmentVariable("QnAMakerApiUrl") };
-            builder.Services.AddSingleton<IQnaServiceProvider>((provider) => new QnaServiceProvider(
+            builder.Services.AddSingleton<IQnaServiceProvider>((provider) => new QuestionAnsweringQnaProvider(
                 provider.GetRequiredService<IConfigurationDataProvider>(), provider.GetRequiredService<IOptionsMonitor<QnAMakerSettings>>(), qnaMakerClient));
             builder.Services.AddSingleton<IConfigurationDataProvider, Common.Providers.ConfigurationDataProvider>();
             builder.Services.AddSingleton<ISearchServiceDataProvider>((provider) => new SearchServiceDataProvider(provider.GetRequiredService<IQnaServiceProvider>(), Environment.GetEnvironmentVariable("StorageConnectionString")));

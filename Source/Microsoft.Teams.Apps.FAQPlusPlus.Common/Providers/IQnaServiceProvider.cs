@@ -23,7 +23,7 @@ namespace Microsoft.Teams.Apps.FAQPlusPlus.Common.Providers
         /// <param name="conversationId">Conversation id.</param>
         /// <param name="activityReferenceId">Activity reference id.</param>
         /// <returns>Operation status of performed action.</returns>
-        Task<Operation> AddQnaAsync(string question, string combinedDescription, string createdBy, string conversationId, string activityReferenceId);
+        Task AddQnaAsync(string question, string combinedDescription, string createdBy, string conversationId, string activityReferenceId);
 
         /// <summary>
         /// This method is used to delete Qna pair from KB.
